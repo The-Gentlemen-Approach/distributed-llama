@@ -88,3 +88,11 @@ dllama: src/dllama.cpp nn-quants.o nn-core.o nn-executor.o nn-network.o llamafil
 	$(CXX) $(CXXFLAGS) $(filter-out %.spv, $^) -o $@ $(LIBS)
 dllama-api: src/dllama-api.cpp nn-quants.o nn-core.o nn-executor.o nn-network.o llamafile-sgemm.o nn-cpu-ops.o nn-cpu.o tokenizer.o llm.o app.o ${DEPS}
 	$(CXX) $(CXXFLAGS) $(filter-out %.spv, $^) -o $@ $(LIBS)
+
+# Simple LLM (단일 디바이스, 분산 처리 없음)
+# - 워커 분산 로직 제거: loadSimpleLlmWeights로 슬라이싱 없이 전체 가중치 로드
+# - 네트워크 통신 없음: SimpleLlmInference에서 제어 패킷 전송 제거
+simple-llm.o: src/simple-llm.cpp
+	$(CXX) $(CXXFLAGS) -c $^ -o $@
+simple-dllama: src/simple-dllama.cpp nn-quants.o nn-core.o nn-executor.o llamafile-sgemm.o nn-cpu-ops.o nn-cpu.o tokenizer.o simple-llm.o ${DEPS}
+	$(CXX) $(CXXFLAGS) $(filter-out %.spv, $^) -o $@ $(LIBS)

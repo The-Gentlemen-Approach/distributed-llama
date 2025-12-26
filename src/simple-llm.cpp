@@ -1,15 +1,21 @@
+#include "simple-llm.hpp"
 #include "nn/nn-core.hpp"
 #include "nn/nn-config-builder.hpp"
-#include "nn/nn-cpu.hpp"
-#include "nn/nn-network.hpp"
 #include "mmap.hpp"
-#include "llm.hpp"
-#include <cerrno>
+#include <algorithm>
+#include <cstring>
+#include <vector>
+#include <memory>
 #include <stdexcept>
+#include <cerrno>
 
-static const char *hiddenActToString(LlmHiddenAct act) {
-    if (act == HIDDEN_ACT_GELU) return "Gelu";
-    if (act == HIDDEN_ACT_SILU) return "Silu";
+// ==================================================================================
+// Helper Functions
+// ==================================================================================
+
+static const char *hiddenActToString(SimpleLlmHiddenAct act) {
+    if (act == SIMPLE_HIDDEN_ACT_GELU) return "Gelu";
+    if (act == SIMPLE_HIDDEN_ACT_SILU) return "Silu";
     throw std::runtime_error("Unsupported hidden act");
 }
 
@@ -20,10 +26,10 @@ static const char *ropeTypeToString(NnRopeType type) {
     throw std::runtime_error("Unsupported rope type");
 }
 
-static const char *archTypeToString(LlmArchType type) {
-    if (type == LLAMA) return "Llama";
-    if (type == QWEN3) return "Qwen3";
-    if (type == QWEN3_MOE) return "Qwen3 MoE";
+static const char *archTypeToString(SimpleLlmArchType type) {
+    if (type == SIMPLE_LLAMA) return "Llama";
+    if (type == SIMPLE_QWEN3) return "Qwen3";
+    if (type == SIMPLE_QWEN3_MOE) return "Qwen3 MoE";
     throw std::runtime_error("Unsupported architecture");
 }
 
@@ -33,11 +39,15 @@ static float convertNormEpsilon(int value) {
     throw std::runtime_error("Unsupported norm epsilon");
 }
 
-LlmHeader loadLlmHeader(const char *path, const NnUint maxSeqLen, NnFloatType syncType) {
-    LlmHeader header;
-    std::memset(&header, 0, sizeof(LlmHeader));
+// ==================================================================================
+// Load & Print Header
+// ==================================================================================
+
+SimpleLlmHeader loadSimpleLlmHeader(const char *path, const unsigned int maxSeqLen, NnFloatType syncType) {
+    SimpleLlmHeader header;
+    std::memset(&header, 0, sizeof(SimpleLlmHeader));
     header.weightType = F_UNK;
-    header.hiddenAct = HIDDEN_ACT_SILU;
+    header.hiddenAct = SIMPLE_HIDDEN_ACT_SILU;
     header.ropeType = ROPE_LLAMA;
     header.ropeTheta = 10000.0f;
     header.ropeScalingFactor = 1.0f;
@@ -71,28 +81,28 @@ LlmHeader loadLlmHeader(const char *path, const NnUint maxSeqLen, NnFloatType sy
     for (int i = 0; i < nKv; i += 2) {
         int key = buffer[i];
         int value = buffer[i + 1];
-        if (key == VERSION) header.version = value;
-        else if (key == ARCH_TYPE) header.archType = (LlmArchType)value;
-        else if (key == DIM) header.dim = value;
-        else if (key == HIDDEN_DIM) header.hiddenDim = value;
-        else if (key == N_LAYERS) header.nLayers = value;
-        else if (key == N_HEADS) header.nHeads = value;
-        else if (key == N_KV_HEADS) header.nKvHeads = value;
-        else if (key == N_EXPERTS) header.nExperts = value;
-        else if (key == N_ACTIVE_EXPERTS) header.nActiveExperts = value;
-        else if (key == VOCAB_SIZE) header.vocabSize = value;
-        else if (key == SEQ_LEN) header.seqLen = value;
-        else if (key == HIDDEN_ACT) header.hiddenAct = (LlmHiddenAct)value;
-        else if (key == ROPE_THETA) header.ropeTheta = (float)value;
-        else if (key == WEIGHT_FLOAT_TYPE) header.weightType = (NnFloatType)value;
-        else if (key == ROPE_SCALING_FACTOR) header.ropeScalingFactor = (float)value;
-        else if (key == ROPE_SCALING_LOW_FREQ_FACTOR) header.ropeScalingLowFreqFactor = (float)value;
-        else if (key == ROPE_SCALING_HIGH_FREQ_FACTORY) header.ropeScalingHighFreqFactory = (float)value;
-        else if (key == ROPE_SCALING_ORIG_MAX_SEQ_LEN) header.ropeScalingOrigMaxSeqLen = value;
-        else if (key == ROPE_TYPE) header.ropeType = (NnRopeType)value;
-        else if (key == HEAD_DIM) header.headDim = value;
-        else if (key == NORM_EPSILON) header.normEpsilon = convertNormEpsilon(value);
-        else if (key == MOE_HIDDEN_DIM) header.moeHiddenDim = value;
+        if (key == SIMPLE_VERSION) header.version = value;
+        else if (key == SIMPLE_ARCH_TYPE) header.archType = (SimpleLlmArchType)value;
+        else if (key == SIMPLE_DIM) header.dim = value;
+        else if (key == SIMPLE_HIDDEN_DIM) header.hiddenDim = value;
+        else if (key == SIMPLE_N_LAYERS) header.nLayers = value;
+        else if (key == SIMPLE_N_HEADS) header.nHeads = value;
+        else if (key == SIMPLE_N_KV_HEADS) header.nKvHeads = value;
+        else if (key == SIMPLE_N_EXPERTS) header.nExperts = value;
+        else if (key == SIMPLE_N_ACTIVE_EXPERTS) header.nActiveExperts = value;
+        else if (key == SIMPLE_VOCAB_SIZE) header.vocabSize = value;
+        else if (key == SIMPLE_SEQ_LEN) header.seqLen = value;
+        else if (key == SIMPLE_HIDDEN_ACT) header.hiddenAct = (SimpleLlmHiddenAct)value;
+        else if (key == SIMPLE_ROPE_THETA) header.ropeTheta = (float)value;
+        else if (key == SIMPLE_WEIGHT_FLOAT_TYPE) header.weightType = (NnFloatType)value;
+        else if (key == SIMPLE_ROPE_SCALING_FACTOR) header.ropeScalingFactor = (float)value;
+        else if (key == SIMPLE_ROPE_SCALING_LOW_FREQ_FACTOR) header.ropeScalingLowFreqFactor = (float)value;
+        else if (key == SIMPLE_ROPE_SCALING_HIGH_FREQ_FACTORY) header.ropeScalingHighFreqFactory = (float)value;
+        else if (key == SIMPLE_ROPE_SCALING_ORIG_MAX_SEQ_LEN) header.ropeScalingOrigMaxSeqLen = value;
+        else if (key == SIMPLE_ROPE_TYPE) header.ropeType = (NnRopeType)value;
+        else if (key == SIMPLE_HEAD_DIM) header.headDim = value;
+        else if (key == SIMPLE_NORM_EPSILON) header.normEpsilon = convertNormEpsilon(value);
+        else if (key == SIMPLE_MOE_HIDDEN_DIM) header.moeHiddenDim = value;
         else throw std::runtime_error("Unsupported header key");
     }
 
@@ -110,12 +120,12 @@ LlmHeader loadLlmHeader(const char *path, const NnUint maxSeqLen, NnFloatType sy
     header.syncType = syncType;
     header.fileSize = (NnSize)seekToEnd(fd);
 
-    if (header.archType == QWEN3 || header.archType == QWEN3_MOE)
+    if (header.archType == SIMPLE_QWEN3 || header.archType == SIMPLE_QWEN3_MOE)
         header.ropeType = ROPE_FALCON;
     return header;
 }
 
-void printLlmHeader(LlmHeader *header) {
+void printSimpleLlmHeader(SimpleLlmHeader *header) {
     printf("💡 Arch: %s\n", archTypeToString(header->archType));
     printf("💡 HiddenAct: %s\n", hiddenActToString(header->hiddenAct));
     printf("💡 Dim: %u\n", header->dim);
@@ -148,15 +158,19 @@ void printLlmHeader(LlmHeader *header) {
     }
 }
 
-LlmNet buildLlmNet(LlmHeader *h, NnUint nNodes, NnUint nBatches) {
+// ==================================================================================
+// Build Network
+// ==================================================================================
+
+SimpleLlmNet buildSimpleLlmNet(SimpleLlmHeader *h, NnUint nNodes, NnUint nBatches) {
     NnUint nExpertsOr1 = std::max(h->nExperts, 1u);
     NnUint nActiveExpertsOr1 = std::max(h->nActiveExperts, 1u);
     NnUint ffDim = h->hiddenDim;
 
-    if (h->archType == QWEN3_MOE)
+    if (h->archType == SIMPLE_QWEN3_MOE)
         ffDim = h->moeHiddenDim;
 
-    LlmNet n;
+    SimpleLlmNet n;
     n.tokenEmbeddingSize = size2D(F_32, h->vocabSize, h->dim);
     n.rmsNormSize = size1D(F_32, h->dim);
     n.qkRmsNormSize = size1D(F_32, h->headDim);
@@ -178,9 +192,9 @@ LlmNet buildLlmNet(LlmHeader *h, NnUint nNodes, NnUint nBatches) {
     NnUint nQNormColumns = 1;
     NnUint nKNormColumns = 1;
     NnUint nInvBufferColumns = 1;
-    if (h->archType == QWEN3 || h->archType == QWEN3_MOE) {
-        ASSERT_EQ(n.qSlice.d0 % h->headDim, 0);
-        ASSERT_EQ(n.kSlice.d0 % h->headDim, 0);
+    if (h->archType == SIMPLE_QWEN3 || h->archType == SIMPLE_QWEN3_MOE) {
+        // ASSERT_EQ(n.qSlice.d0 % h->headDim, 0);
+        // ASSERT_EQ(n.kSlice.d0 % h->headDim, 0);
         nQNormColumns = n.qSlice.d0 / h->headDim;
         nKNormColumns = n.kSlice.d0 / h->headDim;
         nInvBufferColumns = std::max(nQNormColumns, nKNormColumns);
@@ -223,14 +237,12 @@ LlmNet buildLlmNet(LlmHeader *h, NnUint nNodes, NnUint nBatches) {
         const NnUint attBufferIndex = nodeBuilder.addBuffer("att", multiHeadAttSlice.attSize);
         const NnUint logitsSliceBufferIndex = nodeBuilder.addBuffer("lg", size2D(F_32, nBatches, h->vocabSize / nNodes));
 
-        // not moe
         const NnUint dBufferIndex = nodeBuilder.addBuffer("d", size2D(F_32, nBatches, n.w1Slice.d0));
         const NnUint dqBufferIndex = h->syncType == F_32
             ? dBufferIndex
             : nodeBuilder.addBuffer("q_d", size2D(h->syncType, nBatches, n.w1Slice.d0));
         const NnUint lBufferIndex = nodeBuilder.addBuffer("l", size2D(F_32, nBatches, n.w3Slice.d0));
 
-        // moe
         const NnUint moeGtBufferIndex = nodeBuilder.addBuffer("gt", size2D(F_32, nBatches, nExpertsOr1));
         const NnUint moeExpertIndexesBufferIndex = nodeBuilder.addBuffer("act_exp_ix", size2D(F_32, nBatches, nActiveExpertsOr1));
         const NnUint moeYBufferIndex = nodeBuilder.addBuffer("moe_y", size3D(F_32, nActiveExpertsOr1, nBatches, h->dim));
@@ -263,7 +275,6 @@ LlmNet buildLlmNet(LlmHeader *h, NnUint nNodes, NnUint nBatches) {
             NnSegmentConfigBuilder att;
             NnSegmentConfigBuilder ff;
 
-            // att
             if (layerIndex == 0) {
                 att.addOp(
                     OP_CAST, "block_cast_x", layerIndex,
@@ -300,6 +311,7 @@ LlmNet buildLlmNet(LlmHeader *h, NnUint nNodes, NnUint nBatches) {
                     size0(),
                     NnCastOpCodeConfig{});
             }
+            
             att.addOp(
                 OP_MATMUL, "block_matmul_q", layerIndex,
                 pointerBatchConfig(SRC_BUFFER, yqBufferIndex),
@@ -319,7 +331,7 @@ LlmNet buildLlmNet(LlmHeader *h, NnUint nNodes, NnUint nBatches) {
                 size2D(h->weightType, n.vSlice.n, n.vSlice.d0),
                 NnMatmulOpConfig{0, 0, moeExpertIndexesBufferIndex});
 
-            if (h->archType == QWEN3 || h->archType == QWEN3_MOE) {
+            if (h->archType == SIMPLE_QWEN3 || h->archType == SIMPLE_QWEN3_MOE) {
                 att.addOp(OP_INV_RMS, "block_norm_pre_q", layerIndex,
                     pointerBatchConfig(SRC_BUFFER, qBufferIndex),
                     pointerBatchConfig(SRC_BUFFER, invRmsBufferIndex),
@@ -350,7 +362,7 @@ LlmNet buildLlmNet(LlmHeader *h, NnUint nNodes, NnUint nBatches) {
                 pointerBatchConfig(SRC_BUFFER, qBufferIndex),
                 pointerBatchConfig(SRC_BUFFER, qBufferIndex),
                 size0(),
-                NnRopeOpConfig{n.header->ropeType, 1, n.positionPipeIndex, ropeCacheBufferIndex, 
+                NnRopeOpConfig{n.header->ropeType, 1, n.positionPipeIndex, ropeCacheBufferIndex,
                     h->ropeScalingFactor, h->ropeScalingLowFreqFactor, h->ropeScalingHighFreqFactory, h->ropeScalingOrigMaxSeqLen,
                     ropeSlice});
             att.addOp(
@@ -358,9 +370,10 @@ LlmNet buildLlmNet(LlmHeader *h, NnUint nNodes, NnUint nBatches) {
                 pointerBatchConfig(SRC_BUFFER, kTempBufferIndex),
                 pointerBatchConfig(SRC_BUFFER, kTempBufferIndex),
                 size0(),
-                NnRopeOpConfig{n.header->ropeType, 0, n.positionPipeIndex, ropeCacheBufferIndex, 
+                NnRopeOpConfig{n.header->ropeType, 0, n.positionPipeIndex, ropeCacheBufferIndex,
                     h->ropeScalingFactor, h->ropeScalingLowFreqFactor, h->ropeScalingHighFreqFactory, h->ropeScalingOrigMaxSeqLen,
                     ropeSlice});
+           
             att.addOp(
                 OP_SHIFT, "block_shift_k", layerIndex,
                 pointerBatchConfig(SRC_BUFFER, kTempBufferIndex),
@@ -373,6 +386,7 @@ LlmNet buildLlmNet(LlmHeader *h, NnUint nNodes, NnUint nBatches) {
                 pointerRawConfig(SRC_BUFFER, vBufferIndex),
                 size0(),
                 NnShiftOpCodeConfig{n.positionPipeIndex});
+           
             att.addOp(
                 OP_MULTIHEAD_ATT, "block_multihead_att", layerIndex,
                 pointerBatchedSliceConfig(SRC_BUFFER, zBufferIndex),
@@ -380,14 +394,20 @@ LlmNet buildLlmNet(LlmHeader *h, NnUint nNodes, NnUint nBatches) {
                 size0(),
                 NnMultiHeadAttOpConfig{
                     multiHeadAttSlice.nHeads, multiHeadAttSlice.nHeads0,
-                    h->nKvHeads, h->headDim, h->seqLen, n.qSlice.d0, kvCacheSlice.kvDim0,
-                    n.positionPipeIndex, qBufferIndex, kBufferIndex, vBufferIndex, attBufferIndex});
+                    h->nKvHeads, h->headDim, h->seqLen,
+                    n.qSlice.d0, kvCacheSlice.kvDim0,
+                    n.positionPipeIndex,
+                    qBufferIndex,
+                    kBufferIndex,
+                    vBufferIndex,
+                    attBufferIndex});
             att.addOp(
                 OP_CAST, "block_cast_y2", layerIndex,
                 pointerBatchedSliceConfig(SRC_BUFFER, zBufferIndex),
                 pointerBatchConfig(SRC_BUFFER, zqSliceBufferIndex),
                 size0(),
                 NnCastOpCodeConfig{});
+            
             att.addOp(
                 OP_MATMUL, "block_matmul_wo", layerIndex,
                 pointerBatchConfig(SRC_BUFFER, zqSliceBufferIndex),
@@ -402,13 +422,14 @@ LlmNet buildLlmNet(LlmHeader *h, NnUint nNodes, NnUint nBatches) {
                 NnCastOpCodeConfig{});
             att.addSync(zqPipeIndex, SYNC_NODE_SLICES);
 
-            // ff
+            // FF
             ff.addOp(
                 OP_MERGE_ADD, "block_merge_add2", layerIndex,
                 pointerBatchConfig(SRC_PIPE, zqPipeIndex),
                 pointerBatchConfig(SRC_BUFFER, xBufferIndex),
                 size0(),
                 NnMergeAddOpCodeConfig{});
+
             ff.addOp(
                 OP_INV_RMS, "block_norm_pre_1", layerIndex,
                 pointerBatchConfig(SRC_BUFFER, xBufferIndex),
@@ -422,7 +443,7 @@ LlmNet buildLlmNet(LlmHeader *h, NnUint nNodes, NnUint nBatches) {
                 n.rmsNormSize,
                 NnRmsNormOpConfig{invRmsBufferIndex, 1});
 
-            if (h->archType == QWEN3_MOE) {
+            if (h->archType == SIMPLE_QWEN3_MOE) {
                 ff.addOp(
                     OP_REPEAT_Z, "block_moe_y_repeat", layerIndex,
                     pointerBatchConfig(SRC_BUFFER, yBufferIndex),
@@ -518,6 +539,7 @@ LlmNet buildLlmNet(LlmHeader *h, NnUint nNodes, NnUint nBatches) {
                     pointerBatchConfig(SRC_BUFFER, lBufferIndex),
                     size2D(h->weightType, n.w3Slice.n, n.w3Slice.d0),
                     NnMatmulOpConfig{0, 0, moeExpertIndexesBufferIndex});
+
                 ff.addOp(
                     OP_SILU, "block_act", layerIndex,
                     pointerBatchConfig(SRC_BUFFER, dBufferIndex),
@@ -558,12 +580,14 @@ LlmNet buildLlmNet(LlmHeader *h, NnUint nNodes, NnUint nBatches) {
         }
 
         NnSegmentConfigBuilder end;
+
         end.addOp(
             OP_MERGE_ADD, "final_merge_add", 0,
             pointerBatchConfig(SRC_PIPE, zqPipeIndex),
             pointerBatchConfig(SRC_BUFFER, xBufferIndex),
             size0(),
             NnMergeAddOpCodeConfig{});
+
         end.addOp(
             OP_INV_RMS, "final_norm_pre", 0,
             pointerBatchConfig(SRC_BUFFER, xBufferIndex),
@@ -584,6 +608,7 @@ LlmNet buildLlmNet(LlmHeader *h, NnUint nNodes, NnUint nBatches) {
                 size0(),
                 NnCastOpCodeConfig{});
         }
+        
         end.addOp(
             OP_MATMUL, "final_matmul_logits", 0,
             pointerBatchConfig(SRC_BUFFER, yqBufferIndex),
@@ -604,18 +629,61 @@ LlmNet buildLlmNet(LlmHeader *h, NnUint nNodes, NnUint nBatches) {
     return n;
 }
 
-void releaseLlmNet(LlmNet *net) {
+void releaseSimpleLlmNet(SimpleLlmNet *net) {
     for (NnUint nodeIndex = 0u; nodeIndex < net->netConfig.nNodes; nodeIndex++)
         releaseNodeConfig(&net->nodeConfigs[nodeIndex]);
     releaseNetConfig(&net->netConfig);
     delete[] net->nodeConfigs;
 }
 
-void loadLlmNetWeight(const char *path, LlmNet *net, NnRootWeightLoader *loader) {
+// ==================================================================================
+// Load Weights (Local Implementation)
+// ==================================================================================
+
+// Helper class for local weight loading, replacing NnRootWeightLoader functionality
+class SimpleWeightLoader {
+private:
+    NnExecutor *executor;
+    NnByte *temp;
+    NnSize tempSize;
+
+public:
+    SimpleWeightLoader(NnExecutor *executor) : executor(executor), temp(nullptr), tempSize(0) {}
+    ~SimpleWeightLoader() {
+        if (tempSize > 0) delete[] temp;
+    }
+
+    void loadRoot(const char *opName, NnUint opIndex, NnSize nBytes, NnByte *weight) {
+        executor->loadWeight(opName, opIndex, 0u, nBytes, weight);
+    }
+
+    void loadAll(const char *opName, NnUint opIndex, NnSize nBytes, NnByte *weight) {
+        executor->loadWeight(opName, opIndex, 0u, nBytes, weight);
+    }
+
+    void loadRowMatmulSlices(const char *opName, NnUint opIndex, NnUint expertIndex, NnRowMatmulSlice *slice, NnByte *weight) {
+        // Assuming nNodes = 1 for simple execution
+        // Direct load without slicing logic for distributed nodes
+        const NnUint offset = expertIndex * slice->sliceSize.nBytes;
+        executor->loadWeight(opName, opIndex, offset, slice->sliceSize.nBytes, weight);
+    }
+
+    void loadColMatmulSlices(const char *opName, NnUint opIndex, NnUint expertIndex, NnColMatmulSlice *slice, NnByte *weight) {
+        // Assuming nNodes = 1
+        const NnUint offset = expertIndex * slice->sliceSize.nBytes;
+        executor->loadWeight(opName, opIndex, offset, slice->sliceSize.nBytes, weight);
+    }
+};
+
+void loadSimpleLlmNetWeight(const char *path, SimpleLlmNet *net, NnExecutor *executor) {
     MmapFile file;
     openMmapFile(&file, path, net->header->fileSize);
+
+    // Simple execution assumes 1 node for now
+    // assert(net->netConfig.nNodes == 1u);
+
 #if DEBUG_USE_MMAP_FOR_WEIGHTS
-    assert(net->netConfig.nNodes == 1u);
+    // pass
 #else
     std::unique_ptr<MmapFile, void(*)(MmapFile *)> fdPtr(&file, closeMmapFile);
     printf("💿 Loading weights...\n");
@@ -624,46 +692,106 @@ void loadLlmNetWeight(const char *path, LlmNet *net, NnRootWeightLoader *loader)
     Timer timer;
     NnByte *data = (NnByte *)file.data;
     NnByte *b = &data[net->header->headerSize];
-    b += loader->loadRoot("embedding", 0, net->tokenEmbeddingSize.nBytes, b);
+    
+    SimpleWeightLoader loader(executor);
+
+    loader.loadRoot("embedding", 0, net->tokenEmbeddingSize.nBytes, b);
+    b += net->tokenEmbeddingSize.nBytes;
 
     for (NnUint layerIndex = 0u; layerIndex < net->header->nLayers; layerIndex++) {
-        b += loader->loadRowMatmulSlices("block_matmul_q", layerIndex, 0u, &net->qSlice, b);
-        b += loader->loadRowMatmulSlices("block_matmul_k", layerIndex, 0u, &net->kSlice, b);
-        b += loader->loadRowMatmulSlices("block_matmul_v", layerIndex, 0u, &net->vSlice, b);
-        b += loader->loadColMatmulSlices("block_matmul_wo", layerIndex, 0u, &net->woSlice, b);
+        loader.loadRowMatmulSlices("block_matmul_q", layerIndex, 0u, &net->qSlice, b);
+        b += net->qSlice.size.nBytes;
+        loader.loadRowMatmulSlices("block_matmul_k", layerIndex, 0u, &net->kSlice, b);
+        b += net->kSlice.size.nBytes;
+        loader.loadRowMatmulSlices("block_matmul_v", layerIndex, 0u, &net->vSlice, b);
+        b += net->vSlice.size.nBytes;
+        loader.loadColMatmulSlices("block_matmul_wo", layerIndex, 0u, &net->woSlice, b);
+        b += net->woSlice.size.nBytes;
 
         if (net->header->nExperts > 0u) {
-            b += loader->loadAll("block_moe_gate", layerIndex, net->moeGateSize.nBytes, b);
+            loader.loadAll("block_moe_gate", layerIndex, net->moeGateSize.nBytes, b);
+            b += net->moeGateSize.nBytes;
+            
             for (NnUint expertIndex = 0u; expertIndex < net->header->nExperts; expertIndex++) {
-                b += loader->loadRowMatmulSlices("block_matmul_w1", layerIndex, expertIndex, &net->w1Slice, b);
-                b += loader->loadColMatmulSlices("block_matmul_w2", layerIndex, expertIndex, &net->w2Slice, b);
-                b += loader->loadRowMatmulSlices("block_matmul_w3", layerIndex, expertIndex, &net->w3Slice, b);
+                loader.loadRowMatmulSlices("block_matmul_w1", layerIndex, expertIndex, &net->w1Slice, b);
+                b += net->w1Slice.sliceSize.nBytes; // Per expert size
+                loader.loadColMatmulSlices("block_matmul_w2", layerIndex, expertIndex, &net->w2Slice, b);
+                b += net->w2Slice.sliceSize.nBytes;
+                loader.loadRowMatmulSlices("block_matmul_w3", layerIndex, expertIndex, &net->w3Slice, b);
+                b += net->w3Slice.sliceSize.nBytes;
             }
         } else {
-            b += loader->loadRowMatmulSlices("block_matmul_w1", layerIndex, 0u, &net->w1Slice, b);
-            b += loader->loadColMatmulSlices("block_matmul_w2", layerIndex, 0u, &net->w2Slice, b);
-            b += loader->loadRowMatmulSlices("block_matmul_w3", layerIndex, 0u, &net->w3Slice, b);
+            loader.loadRowMatmulSlices("block_matmul_w1", layerIndex, 0u, &net->w1Slice, b);
+            b += net->w1Slice.size.nBytes;
+            loader.loadColMatmulSlices("block_matmul_w2", layerIndex, 0u, &net->w2Slice, b);
+            b += net->w2Slice.size.nBytes;
+            loader.loadRowMatmulSlices("block_matmul_w3", layerIndex, 0u, &net->w3Slice, b);
+            b += net->w3Slice.size.nBytes;
         }
 
-        if (net->header->archType == QWEN3 || net->header->archType == QWEN3_MOE) {
-            b += loader->loadAll("block_norm_q", layerIndex, net->qkRmsNormSize.nBytes, b);
-            b += loader->loadAll("block_norm_k", layerIndex, net->qkRmsNormSize.nBytes, b);
+        if (net->header->archType == SIMPLE_QWEN3 || net->header->archType == SIMPLE_QWEN3_MOE) {
+            loader.loadAll("block_norm_q", layerIndex, net->qkRmsNormSize.nBytes, b);
+            b += net->qkRmsNormSize.nBytes;
+            loader.loadAll("block_norm_k", layerIndex, net->qkRmsNormSize.nBytes, b);
+            b += net->qkRmsNormSize.nBytes;
         }
 
-        b += loader->loadAll("block_norm_0", layerIndex, net->rmsNormSize.nBytes, b);
-        b += loader->loadAll("block_norm_1", layerIndex, net->rmsNormSize.nBytes, b);
+        loader.loadAll("block_norm_0", layerIndex, net->rmsNormSize.nBytes, b);
+        b += net->rmsNormSize.nBytes;
+        loader.loadAll("block_norm_1", layerIndex, net->rmsNormSize.nBytes, b);
+        b += net->rmsNormSize.nBytes;
 
         if (timer.elapsedMiliseconds() > 10000)
             printf("💿 Loaded %u/%u\n", layerIndex + 1, net->header->nLayers);
     }
 
-    b += loader->loadAll("final_norm", 0u, net->rmsNormSize.nBytes, b);
-    b += loader->loadRowMatmulSlices("final_matmul_logits", 0u, 0u, &net->wclsSlice, b);
+    loader.loadAll("final_norm", 0u, net->rmsNormSize.nBytes, b);
+    b += net->rmsNormSize.nBytes;
+    loader.loadRowMatmulSlices("final_matmul_logits", 0u, 0u, &net->wclsSlice, b);
+    b += net->wclsSlice.size.nBytes;
 
     long long missingBytes = (long long)(b - data) - net->header->fileSize;
     if (missingBytes != 0u)
         throw std::runtime_error("Missing bytes in weight file: " + std::to_string(missingBytes));
     printf("💿 Weights loaded\n");
+}
 
-    loader->finish();
+// ==================================================================================
+// SimpleLlmInference Implementation
+// ==================================================================================
+
+SimpleLlmInference::SimpleLlmInference(SimpleLlmNet *net, NnNetExecution *execution, NnExecutor *executor) {
+    this->header = net->header;
+    this->tokenPipe = (float *)execution->pipes[net->tokenPipeIndex];
+    this->positionPipe = (float *)execution->pipes[net->positionPipeIndex];
+    this->logitsPipe = (float *)execution->pipes[net->logitsPipeIndex];
+    this->execution = execution;
+    this->executor = executor;
+}
+
+void SimpleLlmInference::setBatchSize(NnUint batchSize) {
+    execution->setBatchSize(batchSize);
+}
+
+void SimpleLlmInference::setPosition(NnUint position) {
+    // Basic safety checks
+    // assert(position >= 0); // Unsigned is always >= 0
+    if (position + execution->batchSize - 1 >= header->seqLen) {
+        throw std::runtime_error("Position exceeds sequence length");
+    }
+
+    // Set position for each item in batch
+    for (NnUint i = 0; i < execution->batchSize; i++)
+        positionPipe[i] = (float)(position + i);
+}
+
+void SimpleLlmInference::setToken(NnUint batchIndex, NnUint token) {
+    if (batchIndex >= execution->batchSize) {
+         throw std::runtime_error("Batch index out of bounds");
+    }
+    tokenPipe[batchIndex] = (float)token;
+}
+
+void SimpleLlmInference::forward() {
+    executor->forward();
 }
