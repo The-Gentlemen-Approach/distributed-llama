@@ -105,3 +105,6 @@ hpipe-network.o: src/hpipe-network.cpp
 	$(CXX) $(CXXFLAGS) -c $^ -o $@
 hpipe-network-test: src/hpipe-network-test.cpp nn-quants.o nn-core.o nn-executor.o nn-network.o llamafile-sgemm.o nn-cpu-ops.o nn-cpu.o hpipe-network.o simple-llm.o tokenizer.o
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LIBS)
+
+hpipe-pipeline-test: src/hpipe-pipeline-test.cpp nn-quants.o nn-core.o nn-executor.o nn-network.o llamafile-sgemm.o nn-cpu-ops.o nn-cpu.o hpipe-network.o simple-llm.o tokenizer.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LIBS)
