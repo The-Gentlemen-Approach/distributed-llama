@@ -127,7 +127,8 @@ void buildAttentionSegment(
     const NnKvCacheSlice &kvCacheSlice,
     const NnMultiHeadAttSlice &multiHeadAttSlice,
     NnUint nQNormColumns,
-    NnUint nKNormColumns
+    NnUint nKNormColumns,
+    bool isFirstSegmentForWorker = false
 );
 
 /**
@@ -138,7 +139,9 @@ void buildFFNSegment(
     const LlmBufferIndices *buffers,
     SimpleLlmNet *net,
     NnUint layerIndex,
-    NnUint zqPipeIndex
+    NnUint zqPipeIndex,
+    bool isLastSegmentForWorker = false,
+    bool isFirstSegmentForWorker = false
 );
 
 /**
@@ -149,7 +152,9 @@ void buildMoEFFNSegment(
     const LlmBufferIndices *buffers,
     SimpleLlmNet *net,
     NnUint layerIndex,
-    NnUint zqPipeIndex
+    NnUint zqPipeIndex,
+    bool isLastSegmentForWorker = false,
+    bool isFirstSegmentForWorker = false
 );
 
 /**

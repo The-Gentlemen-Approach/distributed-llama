@@ -448,6 +448,34 @@ static void matmul_Q80_Q40_F32(float *output, const NnBlockQ80 *x, const NnBlock
 #endif
 }
 
+// F32_Q40_F32: F32 input, Q40 weight, F32 output
+// Used in H-Pipe for inter-worker activation transfer without quantization loss
+static void matmul_F32_Q40_F32(float *output, const float *x, const NnBlockQ40 *w, const NnUint n, const NnUint d, const NnUint nThreads, const NnUint threadIndex) {
+    SPLIT_THREADS(start, end, d, nThreads, threadIndex);
+    assert(n % Q40_BLOCK_SIZE == 0);
+    const unsigned int nBlocks = n / Q40_BLOCK_SIZE;
+
+    // Generic fallback implementation
+    for (NnUint i = start; i < end; i++) {
+        float sum = 0.0f;
+        for (NnUint j = 0; j < nBlocks; j++) {
+            const NnBlockQ40 *wb = &w[i * nBlocks + j];
+            const float scale = CONVERT_F16_TO_F32(wb->d);
+            const float *xb = &x[j * Q40_BLOCK_SIZE];
+
+            // Dequantize Q40 weights and multiply with F32 inputs
+            for (NnUint k = 0; k < Q40_BLOCK_SIZE / 2; k++) {
+                const float w0 = ((float)((wb->qs[k] & 0x0F) - 8)) * scale;
+                const float w1 = ((float)((wb->qs[k] >> 4) - 8)) * scale;
+                const float x0 = xb[k];
+                const float x1 = xb[k + Q40_BLOCK_SIZE / 2];
+                sum += w0 * x0 + w1 * x1;
+            }
+        }
+        output[i] = sum;
+    }
+}
+
 #define SQRT_2_OVER_PI 0.79788456080286535587989211986876f
 #define GELU_COEF_A 0.044715f
 
@@ -1163,6 +1191,34 @@ static void matmulForward_F32_F32_F32(NnUint nThreads, NnUint threadIndex, NnUin
     }
 }
 
+static void matmulForward_F32_Q40_F32(NnUint nThreads, NnUint threadIndex, NnUint batchSize, NnCpuOpContext *context) {
+    if (matmulForward_llamafile(nThreads, threadIndex, batchSize, context))
+        return;
+
+    const NnMatmulOpConfig *config = (NnMatmulOpConfig *)context->opConfig;
+    const NnUint nActiveExpertsOr1 = std::max(config->nActiveExperts, 1u);
+    const float *activeExpertIndexes = (const float *)context->buffers[config->activeExpertIndexesBufferIndex];
+
+    for (NnUint y = 0; y < batchSize; y++) {
+        for (NnUint e = 0; e < nActiveExpertsOr1; e++) {
+            const NnUint activeExpertIndex = config->nActiveExperts == 0u
+                ? 0u
+                : (NnUint)activeExpertIndexes[y * config->nActiveExperts + e];
+
+            float *output = (float *)context->output[e * context->outputSize.y + y];
+            matmul_F32_Q40_F32(
+                output,
+                (float *)context->input[e * context->inputSize.y + y],
+                (NnBlockQ40 *)&context->weight[activeExpertIndex * context->weightSize.nBytesXY],
+                context->weightSize.y,
+                context->weightSize.x,
+                nThreads,
+                threadIndex);
+            DEBUG_VECTOR(context, "output", output);
+        }
+    }
+}
+
 static void matmulForward_Q80_Q40_F32(NnUint nThreads, NnUint threadIndex, NnUint batchSize, NnCpuOpContext *context) {
     if (matmulForward_llamafile(nThreads, threadIndex, batchSize, context))
         return;
@@ -1558,6 +1614,7 @@ NnCpuOpForward getCpuOpForward(NnOpCode code, NnOpQuantType quantType) {
     }
     if (code == OP_MATMUL) {
         if (quantType == F32_F32_F32) return matmulForward_F32_F32_F32;
+        if (quantType == F32_Q40_F32) return matmulForward_F32_Q40_F32;
         if (quantType == Q80_Q40_F32) return matmulForward_Q80_Q40_F32;
     }
     if (code == OP_ROPE) {

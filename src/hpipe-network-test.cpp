@@ -112,15 +112,17 @@ void testRoot(int argc, char** argv) {
             config.worker_id = i;
             config.total_workers = nWorkers;
 
-            // 레이어 할당 (균등 분배 + 마지막 워커가 나머지 처리)
-            int layersPerWorker = modelHeader.nLayers / nWorkers;
-            config.layer_range.start = i * layersPerWorker;
+            // 세그먼트 할당 (균등 분배 + 마지막 워커가 나머지 처리)
+            // Total segments = 2 * nLayers + 2 (embedding + layers*2 + classifier)
+            int totalSegments = 2 * modelHeader.nLayers + 2;
+            int segmentsPerWorker = totalSegments / nWorkers;
+            config.segment_range.start = i * segmentsPerWorker;
 
             if (i == nWorkers - 1) {
-                // 마지막 워커는 남은 모든 레이어를 담당
-                config.layer_range.end = modelHeader.nLayers - 1;
+                // 마지막 워커는 남은 모든 세그먼트를 담당
+                config.segment_range.end = totalSegments - 1;
             } else {
-                config.layer_range.end = (i + 1) * layersPerWorker - 1;
+                config.segment_range.end = (i + 1) * segmentsPerWorker - 1;
             }
 
             // 다음 워커 주소 설정
@@ -137,11 +139,11 @@ void testRoot(int argc, char** argv) {
             config.model_header = modelHeader;
             configs.push_back(config);
 
-            std::cout << "Config for Worker " << i << ": layers ["
-                      << config.layer_range.start << ", "
-                      << config.layer_range.end << "] ("
-                      << (config.layer_range.end - config.layer_range.start + 1)
-                      << " layers)\n";
+            std::cout << "Config for Worker " << i << ": segments ["
+                      << config.segment_range.start << ", "
+                      << config.segment_range.end << "] ("
+                      << (config.segment_range.end - config.segment_range.start + 1)
+                      << " segments)\n";
         }
 
         network->broadcastConfig(configs);
@@ -230,8 +232,8 @@ void testWorker(int port, int expectedWorkerId) {
         // 설정 수신
         HPipeConfig config = network->recvConfigFromRoot();
         std::cout << "✓ Config received\n";
-        std::cout << "Assigned layers: [" << config.layer_range.start
-                  << ", " << config.layer_range.end << "]\n";
+        std::cout << "Assigned segments: [" << config.segment_range.start
+                  << ", " << config.segment_range.end << "]\n";
         std::cout << "Total workers: " << config.total_workers << "\n";
 
         // Config 수신 확인 ACK 전송

@@ -15,6 +15,7 @@
 
 #include "hpipe-network.hpp"
 #include "simple-llm.hpp"
+#include "hpipe-utils.hpp"
 #include <iostream>
 #include <vector>
 #include <cstring>
@@ -25,29 +26,7 @@
 
 // 전역 시작 시간
 
-// 타임스탬프 출력 헬퍼
-std::string getTimestamp() {
-    // 1. 현재 시스템 시간 가져오기
-    auto now = std::chrono::system_clock::now();
-    
-    // 2. 밀리초(ms) 부분만 따로 계산 (time_t는 초 단위까지만 표현 가능하므로)
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
-
-    // 3. 포맷팅을 위해 time_t 구조체로 변환
-    std::time_t now_c = std::chrono::system_clock::to_time_t(now);
-    std::tm now_tm = *std::localtime(&now_c); 
-
-    std::ostringstream oss;
-    
-    // 4. [시:분:초.밀리초] 형식으로 출력
-    // %H(시), %M(분), %S(초)
-    oss << "[" << std::put_time(&now_tm, "%H:%M:%S") 
-        << "." << std::setfill('0') << std::setw(3) << ms.count() << "]";
-
-    return oss.str();
-}
-
-#define LOG(msg) std::cout << getTimestamp() << " " << msg << "\n"
+// 타임스탬프 출력 헬퍼 (Moved to hpipe-utils.hpp)
 
 void printUsage() {
     std::cout << "Usage:\n";

@@ -168,7 +168,7 @@ static void inference(SimpleInferenceContext *context) {
 
     NnUint pos = 0;
     int nInputTokens;
-    context->tokenizer->encode(context->args->prompt, inputTokens, &nInputTokens, true, true);
+    context->tokenizer->encode(context->args->prompt, inputTokens, &nInputTokens, false, false);
 
     if (nInputTokens > context->header->seqLen)
         throw std::runtime_error("The number of prompt tokens is greater than the sequence length");

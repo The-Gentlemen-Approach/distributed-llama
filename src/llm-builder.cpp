@@ -60,7 +60,7 @@ LlmNetworkConfig initializeLlmNetwork(SimpleLlmNet *n, SimpleLlmHeader *h, NnUin
     // Initialize multi-head attention slice
     config.multiHeadAttSlice.nHeads = h->nHeads;
     config.multiHeadAttSlice.nHeads0 = h->nHeads;
-    config.multiHeadAttSlice.attSize = size2D(F_32, nBatches, h->seqLen);
+    config.multiHeadAttSlice.attSize = size3D(F_32, nBatches, h->nHeads, h->seqLen);
 
     // Initialize RoPE slice
     config.ropeSlice.kvDim = h->kvDim;
@@ -182,19 +182,21 @@ void buildAttentionSegment(
     const NnKvCacheSlice &kvCacheSlice,
     const NnMultiHeadAttSlice &multiHeadAttSlice,
     NnUint nQNormColumns,
-    NnUint nKNormColumns
+    NnUint nKNormColumns,
+    bool isFirstSegmentForWorker
 ) {
     SimpleLlmHeader *h = net->header;
-    bool isFirstLayer = (layerIndex == 0);
+    bool isFirstLayer = (layerIndex == 0) || isFirstSegmentForWorker;
     NnUint moeExpertIndexesBufferIndex = 0;
 
     NnSegmentConfigBuilder att;
 
     // Input handling: first layer vs other layers
     if (isFirstLayer) {
+        NnUint srcPipeIndex = (layerIndex == 0) ? net->xPipeIndex : zqPipeIndex;
         att.addOp(
             OP_CAST, "block_cast_x", layerIndex,
-            pointerBatchConfig(SRC_PIPE, net->xPipeIndex),
+            pointerBatchConfig(SRC_PIPE, srcPipeIndex),
             pointerBatchConfig(SRC_BUFFER, buf->xBufferIndex),
             size0(),
             NnCastOpCodeConfig{});
@@ -356,7 +358,9 @@ void buildFFNSegment(
     const LlmBufferIndices *buf,
     SimpleLlmNet *net,
     NnUint layerIndex,
-    NnUint zqPipeIndex
+    NnUint zqPipeIndex,
+    bool isLastSegmentForWorker,
+    bool isFirstSegmentForWorker
 ) {
     SimpleLlmHeader *h = net->header;
     NnUint moeExpertIndexesBufferIndex = 0;
@@ -364,12 +368,24 @@ void buildFFNSegment(
     NnSegmentConfigBuilder ff;
 
     // Residual connection
-    ff.addOp(
-        OP_MERGE_ADD, "block_merge_add2", layerIndex,
-        pointerBatchConfig(SRC_PIPE, zqPipeIndex),
-        pointerBatchConfig(SRC_BUFFER, buf->xBufferIndex),
-        size0(),
-        NnMergeAddOpCodeConfig{});
+    if (isFirstSegmentForWorker) {
+        // First segment for worker: Previous worker sent accumulated residual
+        // Just copy it to xBuffer (no addition needed)
+        ff.addOp(
+            OP_CAST, "block_cast_input", layerIndex,
+            pointerBatchConfig(SRC_PIPE, zqPipeIndex),
+            pointerBatchConfig(SRC_BUFFER, buf->xBufferIndex),
+            size0(),
+            NnCastOpCodeConfig{});
+    } else {
+        // Internal segment: Add FFN delta to accumulated residual
+        ff.addOp(
+            OP_MERGE_ADD, "block_merge_add2", layerIndex,
+            pointerBatchConfig(SRC_PIPE, zqPipeIndex),
+            pointerBatchConfig(SRC_BUFFER, buf->xBufferIndex),
+            size0(),
+            NnMergeAddOpCodeConfig{});
+    }
 
     // RMS Norm
     ff.addOp(
@@ -440,12 +456,30 @@ void buildFFNSegment(
         pointerBatchConfig(SRC_BUFFER, buf->yBufferIndex),
         size2D(h->weightType, net->w2Slice.n0, net->w2Slice.d),
         NnMatmulOpConfig{0, 0, moeExpertIndexesBufferIndex});
-    ff.addOp(
-        OP_CAST, "block_cast_d3", layerIndex,
-        pointerBatchConfig(SRC_BUFFER, buf->yBufferIndex),
-        pointerBatchedSliceConfig(SRC_PIPE, zqPipeIndex),
-        size0(),
-        NnCastOpCodeConfig{});
+
+    if (isLastSegmentForWorker) {
+        // Last segment for worker: Output accumulated residual + FFN result
+        ff.addOp(
+            OP_MERGE_ADD, "block_merge_add_boundary", layerIndex,
+            pointerBatchConfig(SRC_BUFFER, buf->yBufferIndex),
+            pointerBatchConfig(SRC_BUFFER, buf->xBufferIndex),
+            size0(),
+            NnMergeAddOpCodeConfig{});
+        ff.addOp(
+            OP_CAST, "block_cast_d3", layerIndex,
+            pointerBatchConfig(SRC_BUFFER, buf->xBufferIndex),
+            pointerBatchedSliceConfig(SRC_PIPE, zqPipeIndex),
+            size0(),
+            NnCastOpCodeConfig{});
+    } else {
+        // Internal layer: Output only FFN result (delta)
+        ff.addOp(
+            OP_CAST, "block_cast_d3", layerIndex,
+            pointerBatchConfig(SRC_BUFFER, buf->yBufferIndex),
+            pointerBatchedSliceConfig(SRC_PIPE, zqPipeIndex),
+            size0(),
+            NnCastOpCodeConfig{});
+    }
 
     nodeBuilder->addSegment(ff.build());
 }
@@ -459,19 +493,33 @@ void buildMoEFFNSegment(
     const LlmBufferIndices *buf,
     SimpleLlmNet *net,
     NnUint layerIndex,
-    NnUint zqPipeIndex
+    NnUint zqPipeIndex,
+    bool isLastSegmentForWorker,
+    bool isFirstSegmentForWorker
 ) {
     SimpleLlmHeader *h = net->header;
 
     NnSegmentConfigBuilder ff;
 
     // Residual connection
-    ff.addOp(
-        OP_MERGE_ADD, "block_merge_add2", layerIndex,
-        pointerBatchConfig(SRC_PIPE, zqPipeIndex),
-        pointerBatchConfig(SRC_BUFFER, buf->xBufferIndex),
-        size0(),
-        NnMergeAddOpCodeConfig{});
+    if (isFirstSegmentForWorker) {
+        // First segment for worker: Previous worker sent accumulated residual
+        // Just copy it to xBuffer (no addition needed)
+        ff.addOp(
+            OP_CAST, "block_cast_input", layerIndex,
+            pointerBatchConfig(SRC_PIPE, zqPipeIndex),
+            pointerBatchConfig(SRC_BUFFER, buf->xBufferIndex),
+            size0(),
+            NnCastOpCodeConfig{});
+    } else {
+        // Internal segment: Add FFN delta to accumulated residual
+        ff.addOp(
+            OP_MERGE_ADD, "block_merge_add2", layerIndex,
+            pointerBatchConfig(SRC_PIPE, zqPipeIndex),
+            pointerBatchConfig(SRC_BUFFER, buf->xBufferIndex),
+            size0(),
+            NnMergeAddOpCodeConfig{});
+    }
 
     // RMS Norm
     ff.addOp(
@@ -577,12 +625,30 @@ void buildMoEFFNSegment(
         pointerBatchConfig(SRC_BUFFER, buf->yBufferIndex),
         size0(),
         NnMergeSumOpCodeConfig{});
-    ff.addOp(
-        OP_CAST, "block_cast_d3", layerIndex,
-        pointerBatchConfig(SRC_BUFFER, buf->yBufferIndex),
-        pointerBatchedSliceConfig(SRC_PIPE, zqPipeIndex),
-        size0(),
-        NnCastOpCodeConfig{});
+
+    if (isLastSegmentForWorker) {
+        // Last segment for worker: Output accumulated residual + MoE result
+        ff.addOp(
+            OP_MERGE_ADD, "block_merge_add_boundary", layerIndex,
+            pointerBatchConfig(SRC_BUFFER, buf->yBufferIndex),
+            pointerBatchConfig(SRC_BUFFER, buf->xBufferIndex),
+            size0(),
+            NnMergeAddOpCodeConfig{});
+        ff.addOp(
+            OP_CAST, "block_cast_d3", layerIndex,
+            pointerBatchConfig(SRC_BUFFER, buf->xBufferIndex),
+            pointerBatchedSliceConfig(SRC_PIPE, zqPipeIndex),
+            size0(),
+            NnCastOpCodeConfig{});
+    } else {
+        // Internal layer: Output only MoE result (delta)
+        ff.addOp(
+            OP_CAST, "block_cast_d3", layerIndex,
+            pointerBatchConfig(SRC_BUFFER, buf->yBufferIndex),
+            pointerBatchedSliceConfig(SRC_PIPE, zqPipeIndex),
+            size0(),
+            NnCastOpCodeConfig{});
+    }
 
     nodeBuilder->addSegment(ff.build());
 }
