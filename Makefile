@@ -94,7 +94,9 @@ dllama-api: src/dllama-api.cpp nn-quants.o nn-core.o nn-executor.o nn-network.o 
 # - 네트워크 통신 없음: SimpleLlmInference에서 제어 패킷 전송 제거
 simple-llm.o: src/simple-llm.cpp
 	$(CXX) $(CXXFLAGS) -c $^ -o $@
-simple-dllama: src/simple-dllama.cpp nn-quants.o nn-core.o nn-executor.o llamafile-sgemm.o nn-cpu-ops.o nn-cpu.o tokenizer.o simple-llm.o ${DEPS}
+llm-builder.o: src/llm-builder.cpp
+	$(CXX) $(CXXFLAGS) -c $^ -o $@
+simple-dllama: src/simple-dllama.cpp nn-quants.o nn-core.o nn-executor.o llamafile-sgemm.o nn-cpu-ops.o nn-cpu.o tokenizer.o simple-llm.o llm-builder.o ${DEPS}
 	$(CXX) $(CXXFLAGS) $(filter-out %.spv, $^) -o $@ $(LIBS)
 
 # H-Pipe (파이프라인 병렬화)
