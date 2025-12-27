@@ -3,6 +3,7 @@
 
 #include "nn/nn-core.hpp"
 #include "nn/nn-executor.hpp"
+#include "simple-llm-utils.hpp"
 
 // ==================================================================================
 // Enums & Structs (Copied & Renamed from llm.hpp to avoid dependency)
@@ -86,7 +87,7 @@ typedef struct {
 typedef struct {
     SimpleLlmHeader *header;
     NnNetConfig netConfig;
-    NnNodeConfig *nodeConfigs;
+    NnNodeConfig nodeConfig;  // Single-node: no array needed
 
     NnRowMatmulSlice qSlice;
     NnRowMatmulSlice kSlice;
@@ -125,10 +126,9 @@ SimpleLlmHeader loadSimpleLlmHeader(const char* path, const unsigned int maxSeqL
 void printSimpleLlmHeader(SimpleLlmHeader *header);
 
 /**
- * Builds the network for a simple execution (can be 1 node or multiple, but focused on Simple usage).
- * Note: Keeps nNodes to allow potential expansion, but simple-dllama uses nNodes=1.
+ * Builds the network for single-node execution.
  */
-SimpleLlmNet buildSimpleLlmNet(SimpleLlmHeader *h, NnUint nNodes, NnUint nBatches);
+SimpleLlmNet buildSimpleLlmNet(SimpleLlmHeader *h, NnUint nBatches);
 
 /**
  * Releases the network resources.

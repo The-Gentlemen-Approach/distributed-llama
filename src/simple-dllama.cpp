@@ -258,8 +258,6 @@ static std::vector<NnExecutorDevice> resolveDevices(AppCliArgs *args, NnNetConfi
 }
 
 void runSimpleApp(AppCliArgs *args) {
-    NnUint nNodes = 1; // Single node fixed
-
     // 1. Load Header
     SimpleLlmHeader header = loadSimpleLlmHeader(args->modelPath, args->maxSeqLen, args->syncType);
 
@@ -277,10 +275,10 @@ void runSimpleApp(AppCliArgs *args) {
     Sampler sampler(tokenizer.vocabSize, args->temperature, args->topp, args->seed);
 
     // 4. Build Network
-    SimpleLlmNet net = buildSimpleLlmNet(&header, nNodes, args->nBatches);
+    SimpleLlmNet net = buildSimpleLlmNet(&header, args->nBatches);
     std::unique_ptr<SimpleLlmNet, void(*)(SimpleLlmNet *)> netPtr(&net, releaseSimpleLlmNet);
 
-    NnNodeConfig *rootNodeConfig = &net.nodeConfigs[0];
+    NnNodeConfig *rootNodeConfig = &net.nodeConfig;
 
     if (args->info) {
         printSimpleLlmHeader(&header);
