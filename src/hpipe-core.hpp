@@ -11,7 +11,7 @@
 // ==================================================================================
 
 // 워커에게 할당된 레이어 범위 [start, end] (포함)
-struct LayerRange {
+struct SegmentRange {
     int start;
     int end;
 };
@@ -33,7 +33,7 @@ struct HPipeConfig {
     int total_workers;  // 전체 워커 수
     
     // 레이어 할당 정보
-    LayerRange layer_range;
+    SegmentRange segment_range;
     
     // 순방향 (데이터) 경로 정보
     char next_host[256];
@@ -73,7 +73,7 @@ public:
     virtual ~IPartitioningPolicy() {}
     
     // 모델 헤더와 워커 수를 기반으로 각 워커의 레이어 범위를 결정합니다.
-    virtual std::vector<LayerRange> assignLayers(
+    virtual std::vector<SegmentRange> assignSegments(
         const SimpleLlmHeader& header, 
         int n_workers
     ) = 0;

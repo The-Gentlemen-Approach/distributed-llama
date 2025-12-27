@@ -92,8 +92,8 @@ void testWorkerPipeline(int port, int expectedWorkerId) {
         // 설정 수신
         HPipeConfig config = network->recvConfigFromRoot();
         network->sendConfigAck();
-        LOG("✓ Config received - layers [" << config.layer_range.start
-            << ", " << config.layer_range.end << "]");
+        LOG("✓ Config received - segments [" << config.segment_range.start
+            << ", " << config.segment_range.end << "]");
 
         // 파이프라인 처리: 여러 청크를 연속으로 처리
         const int MAX_DATA_SIZE = 1024 * sizeof(float);
@@ -195,12 +195,12 @@ void testRootPipeline(int argc, char** argv) {
             config.worker_id = i;
             config.total_workers = nWorkers;
 
-            int layersPerWorker = modelHeader.nLayers / nWorkers;
-            config.layer_range.start = i * layersPerWorker;
+            int segmentsPerWorker = modelHeader.nLayers * 2 / nWorkers;
+            config.segment_range.start = i * segmentsPerWorker;
             if (i == nWorkers - 1) {
-                config.layer_range.end = modelHeader.nLayers - 1;
+                config.segment_range.end = modelHeader.nLayers * 2 - 1;
             } else {
-                config.layer_range.end = (i + 1) * layersPerWorker - 1;
+                config.segment_range.end = (i + 1) * segmentsPerWorker - 1;
             }
 
             if (i < nWorkers - 1) {
