@@ -96,3 +96,12 @@ simple-llm.o: src/simple-llm.cpp
 	$(CXX) $(CXXFLAGS) -c $^ -o $@
 simple-dllama: src/simple-dllama.cpp nn-quants.o nn-core.o nn-executor.o llamafile-sgemm.o nn-cpu-ops.o nn-cpu.o tokenizer.o simple-llm.o ${DEPS}
 	$(CXX) $(CXXFLAGS) $(filter-out %.spv, $^) -o $@ $(LIBS)
+
+# H-Pipe (파이프라인 병렬화)
+# - 선형 파이프라인 토폴로지: Root → Worker1 → Worker2 → ... → Root
+# - ACK 기반 역방향 흐름 제어
+# - 청크 기반 스트리밍 처리
+hpipe-network.o: src/hpipe-network.cpp
+	$(CXX) $(CXXFLAGS) -c $^ -o $@
+hpipe-network-test: src/hpipe-network-test.cpp nn-quants.o nn-core.o nn-executor.o nn-network.o llamafile-sgemm.o nn-cpu-ops.o nn-cpu.o hpipe-network.o simple-llm.o tokenizer.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LIBS)
