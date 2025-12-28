@@ -129,26 +129,94 @@ def download(modelName: str, model: list):
     print('📀 All files are downloaded')
     return (modelPath, tokenizerPath)
 
-def writeRunFile(modelName: str, command: str):
-    filePath = f'run_{modelName}.sh'
+def getMode():
+    """Get execution mode from command line arguments"""
+    for arg in sys.argv:
+        if arg.startswith('--mode='):
+            return arg.split('=')[1]
+    return 'simple'  # Default to simple mode
+
+def getWorkerCount():
+    """Get worker count for hpipe mode"""
+    for arg in sys.argv:
+        if arg.startswith('--workers='):
+            return int(arg.split('=')[1])
+    return 2  # Default to 2 workers
+
+def writeRunFile(modelName: str, mode: str, modelPath: str, tokenizerPath: str, bufferType: str, extraArgs: str, nThreads: int, workerCount: int):
+    """Write execution script based on mode"""
+    filePath = f'run_{modelName}_{mode}.sh'
+
     with open(filePath, 'w') as file:
-        file.write('#!/bin/sh\n')
+        file.write('#!/bin/bash\n')
+        file.write(f'# {modelName} - {mode.upper()} mode\n')
         file.write('\n')
-        file.write(f'{command}\n')
+
+        if mode == 'simple':
+            # Simple single-node execution
+            file.write(f'./simple-dllama \\\n')
+            file.write(f'  --model {modelPath} \\\n')
+            file.write(f'  --tokenizer {tokenizerPath} \\\n')
+            file.write(f'  --buffer-float-type {bufferType} \\\n')
+            file.write(f'  --nthreads {nThreads} \\\n')
+            file.write(f'  --steps 100 \\\n')
+            file.write(f'  --prompt "Once upon a time"')
+            if extraArgs:
+                file.write(f' \\\n  {extraArgs}')
+            file.write('\n')
+
+        elif mode == 'hpipe':
+            # H-Pipe pipeline parallelism
+            file.write('# Start workers in background\n')
+            for i in range(workerCount):
+                port = 9999 + i
+                file.write(f'./hpipe-worker --port {port} --nthreads {nThreads} > worker{i}.log 2>&1 &\n')
+
+            file.write('\n# Wait for workers to start\n')
+            file.write('sleep 3\n')
+            file.write('\n# Run root coordinator\n')
+
+            workers_str = ' '.join([f'127.0.0.1:{9999+i}' for i in range(workerCount)])
+            file.write(f'./hpipe-root \\\n')
+            file.write(f'  --model {modelPath} \\\n')
+            file.write(f'  --tokenizer {tokenizerPath} \\\n')
+            file.write(f'  --workers {workers_str} \\\n')
+            file.write(f'  --nthreads {nThreads} \\\n')
+            file.write(f'  --steps 50 \\\n')
+            file.write(f'  --chunk-size 64 \\\n')
+            file.write(f'  --prompt "Once upon a time"')
+            if extraArgs:
+                file.write(f' \\\n  {extraArgs}')
+            file.write('\n')
+            file.write('\n# Cleanup\n')
+            file.write('pkill -f hpipe-worker\n')
+
+    # Make executable
+    os.chmod(filePath, 0o755)
     return filePath
 
 def printUsage():
-    print('Usage: python download-model.py <model>')
+    print('Usage: python launch.py <model> [options]')
     print()
     print('Options:')
-    print('  <model>       The name of the model to download')
-    print('  -skip-run     Do not run the model after download')
-    print('  -skip-script  Do not create a script to run the model')
-    print('  -y            Skip confirmation prompts')
+    print('  <model>         The name of the model to download')
+    print('  --mode=MODE     Execution mode: simple (default), hpipe')
+    print('  --workers=N     Number of workers for hpipe mode (default: 2)')
+    print('  -skip-run       Do not run the model after download')
+    print('  -skip-script    Do not create a script to run the model')
+    print('  -y              Skip confirmation prompts')
+    print()
+    print('Execution modes:')
+    print('  simple   - Single-node execution (fastest to start, good for testing)')
+    print('  hpipe    - Pipeline parallelism (token-level, any number of workers)')
     print()
     print('Available models:')
     for model in MODELS:
         print(f'  {model}')
+    print()
+    print('Examples:')
+    print('  python launch.py llama3_2_1b_instruct_q40')
+    print('  python launch.py llama3_2_1b_instruct_q40 --mode=hpipe --workers=3')
 
 if __name__ == '__main__':
     if (len(sys.argv) < 2):
@@ -165,31 +233,52 @@ if __name__ == '__main__':
     model = MODELS[modelName]
     (modelPath, tokenizerPath) = download(modelName, model)
 
+    mode = getMode()
+    workerCount = getWorkerCount()
     nThreads = multiprocessing.cpu_count()
-    if (model[4] == 'chat'):
-        command = './dllama chat'
-    else:
-        command = './dllama inference --steps 64 --prompt "Hello world"'
-    command += f' --model {modelPath} --tokenizer {tokenizerPath} --buffer-float-type {model[3]} --nthreads {nThreads}'
-    if (len(model) > 5):
-        command += f' {model[5]}'
 
-    print('To run Distributed Llama you need to execute:')
-    print('--- copy start ---')
+    extraArgs = model[5] if len(model) > 5 else ''
+
+    # Build and display command
     print()
-    print('\033[96m' + command + '\033[0m')
+    print(f'🎯 Mode: {mode.upper()}')
+    if mode == 'hpipe':
+        print(f'👥 Workers: {workerCount}')
+    print(f'🧵 Threads: {nThreads}')
     print()
-    print('--- copy end -----')
 
     skipRun = sys.argv.count('-skip-run') > 0
     skipScript = sys.argv.count('-skip-script') > 0
 
     if (not skipScript):
-        runFilePath = writeRunFile(modelName, command)
-        print(f'🌻 Created {runFilePath} script to easy run')
+        runFilePath = writeRunFile(modelName, mode, modelPath, tokenizerPath,
+                                   model[3], extraArgs, nThreads, workerCount)
+        print(f'📝 Created {runFilePath} script for easy execution')
+        print(f'   Run with: ./{runFilePath}')
+        print()
 
     if (not skipRun):
-        if (confirm('Do you want to run Distributed Llama?')):
-            if (not os.path.isfile('dllama')):
-                os.system('make dllama')
-            os.system(command)
+        if (confirm(f'Do you want to run in {mode} mode now?')):
+            # Build the appropriate binary
+            if mode == 'simple':
+                if not os.path.isfile('simple-dllama'):
+                    print('🔨 Building simple-dllama...')
+                    os.system('make simple-dllama')
+                print('🚀 Running simple-dllama...')
+                command = f'./simple-dllama --model {modelPath} --tokenizer {tokenizerPath} --buffer-float-type {model[3]} --nthreads {nThreads} --steps 100 --prompt "Once upon a time"'
+                if extraArgs:
+                    command += f' {extraArgs}'
+                os.system(command)
+
+            elif mode == 'hpipe':
+                if not os.path.isfile('hpipe-root') or not os.path.isfile('hpipe-worker'):
+                    print('🔨 Building hpipe binaries...')
+                    os.system('make hpipe-root hpipe-worker')
+                print(f'🚀 Running H-Pipe with {workerCount} workers...')
+                runFilePath = f'run_{modelName}_hpipe.sh'
+                os.system(f'./{runFilePath}')
+
+            else:
+                print(f'❌ Unknown mode: {mode}')
+                print('   Supported modes: simple, hpipe')
+                exit(1)
