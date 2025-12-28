@@ -8,15 +8,15 @@
 // Load Weights (Segment-based)
 // ==================================================================================
 
-class SimpleWeightLoader {
+class SegmentWeightLoader {
 private:
     NnExecutor *executor;
     NnByte *temp;
     NnSize tempSize;
 
 public:
-    SimpleWeightLoader(NnExecutor *executor) : executor(executor), temp(nullptr), tempSize(0) {}
-    ~SimpleWeightLoader() {
+    SegmentWeightLoader(NnExecutor *executor) : executor(executor), temp(nullptr), tempSize(0) {}
+    ~SegmentWeightLoader() {
         if (tempSize > 0) delete[] temp;
     }
 
@@ -48,8 +48,8 @@ void loadHpipeLlmNetWeight(const char *path, SimpleLlmNet *net, NnExecutor *exec
 
     NnByte *data = (NnByte *)file.data;
     NnByte *b = &data[net->header->headerSize];
-    
-    SimpleWeightLoader loader(executor);
+
+    SegmentWeightLoader loader(executor);
     int maxSegment = 2 * net->header->nLayers + 1;
 
     // Embedding (Segment 0)
