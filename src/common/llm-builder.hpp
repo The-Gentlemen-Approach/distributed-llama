@@ -3,7 +3,7 @@
 
 #include "nn/nn-core.hpp"
 #include "nn/nn-config-builder.hpp"
-#include "simple-llm.hpp"
+#include "common/llm-types.hpp"
 /**
  * Segment builder functions for LLM network construction.
  * These functions build individual segments that can be used by both
@@ -166,5 +166,10 @@ void buildClassifierSegment(
     SimpleLlmNet *net,
     NnUint zqPipeIndex
 );
+
+/**
+ * Releases the network resources.
+ */
+void releaseSimpleLlmNet(SimpleLlmNet *net);
 
 #endif // LLM_BUILDER_HPP

@@ -1,4 +1,5 @@
-#include "llm-builder.hpp"
+#include "common/llm-builder.hpp"
+#include "simple/utils.hpp"
 
 // ==================================================================================
 // Network Initialization
@@ -712,4 +713,9 @@ void buildClassifierSegment(
         NnCastOpCodeConfig{});
 
     nodeBuilder->addSegment(end.build());
+}
+
+void releaseSimpleLlmNet(SimpleLlmNet *net) {
+    releaseNodeConfig(&net->nodeConfig);
+    releaseNetConfig(&net->netConfig);
 }

@@ -1,6 +1,6 @@
 #include <cassert>
 #include <cstring>
-#include "tokenizer.hpp"
+#include "common/tokenizer.hpp"
 
 #define DEV_TESTS false
 

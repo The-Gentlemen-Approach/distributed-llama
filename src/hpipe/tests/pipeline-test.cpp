@@ -13,9 +13,10 @@
  * 터미널 3: ./hpipe-pipeline-test root 127.0.0.1:9999 127.0.0.1:10000
  */
 
-#include "hpipe-network.hpp"
-#include "simple-llm.hpp"
-#include "hpipe-utils.hpp"
+#include "hpipe/network/root.hpp"
+#include "hpipe/network/worker.hpp"
+#include "common/llm-types.hpp"
+#include "hpipe/core/utils.hpp"
 #include <iostream>
 #include <vector>
 #include <cstring>

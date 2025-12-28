@@ -12,7 +12,7 @@
 #include <vector>
 #include "nn/nn-core.hpp"
 #include "nn/nn-cpu-ops.hpp"
-#include "tokenizer.hpp"
+#include "common/tokenizer.hpp"
 #if defined(__ARM_NEON)
     #include <arm_neon.h>
 #endif

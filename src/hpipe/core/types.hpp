@@ -4,7 +4,7 @@
 #include <vector>
 #include <string>
 #include <cstdint>
-#include "simple-llm.hpp" 
+#include "common/llm-types.hpp" 
 
 // ==================================================================================
 // 1. 데이터 구조체 (Data Structures)

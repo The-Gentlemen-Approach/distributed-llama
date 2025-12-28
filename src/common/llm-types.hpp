@@ -1,12 +1,10 @@
-#ifndef SIMPLE_LLM_HPP
-#define SIMPLE_LLM_HPP
+#ifndef COMMON_LLM_TYPES_HPP
+#define COMMON_LLM_TYPES_HPP
 
-#include "nn/nn-core.hpp"
-#include "nn/nn-executor.hpp"
-#include "simple-llm-utils.hpp"
+#include "../nn/nn-core.hpp"
 
 // ==================================================================================
-// Enums & Structs (Copied & Renamed from llm.hpp to avoid dependency)
+// Enums & Structs
 // ==================================================================================
 
 enum SimpleLlmHeaderKey {
@@ -112,7 +110,7 @@ typedef struct {
 } SimpleLlmNet;
 
 // ==================================================================================
-// Classes & Functions
+// Functions
 // ==================================================================================
 
 /**
@@ -124,50 +122,5 @@ SimpleLlmHeader loadSimpleLlmHeader(const char* path, const unsigned int maxSeqL
  * Prints the model header.
  */
 void printSimpleLlmHeader(SimpleLlmHeader *header);
-
-/**
- * Builds the network for single-node execution.
- */
-SimpleLlmNet buildSimpleLlmNet(SimpleLlmHeader *h, NnUint nBatches);
-
-/**
- * Releases the network resources.
- */
-void releaseSimpleLlmNet(SimpleLlmNet *net);
-
-/**
- * Loads weights into the network.
- */
-void loadSimpleLlmNetWeight(const char* path, SimpleLlmNet *net, NnExecutor *executor);
-
-/**
- * Simple Inference Control (Simplified RootLlmInference).
- * Assumes local execution or simplified network control.
- */
-class SimpleLlmInference {
-public:
-    float *logitsPipe;
-
-private:
-    float *tokenPipe;
-    float *positionPipe;
-    SimpleLlmHeader *header;
-    NnNetExecution *execution;
-    NnExecutor *executor;
-    
-    // Simplified control packet structure locally if needed, 
-    // but for single node we just set pipes.
-    // If we want to support distributed in simple-llm, we need networking.
-    // Assuming simple-llm is standalone and might not need full distributed complexity,
-    // but the user wants "simple-dllama" which implies distributed llama simplified.
-    // However, simple-dllama.cpp sets nNodes=1.
-    
-public:
-    SimpleLlmInference(SimpleLlmNet *net, NnNetExecution *execution, NnExecutor *executor);
-    void setBatchSize(NnUint batchSize);
-    void setPosition(NnUint position);
-    void setToken(NnUint batchIndex, NnUint token);
-    void forward();
-};
 
 #endif

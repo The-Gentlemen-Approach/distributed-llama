@@ -13,8 +13,12 @@
 #include "nn/nn-cpu-ops.hpp"
 // Removed nn-network.hpp dependency
 #include "nn/nn-executor.hpp"
-#include "simple-llm.hpp"
-#include "tokenizer.hpp"
+#include "common/llm-types.hpp"
+#include "common/llm-builder.hpp"
+#include "common/tokenizer.hpp"
+#include "simple/inference.hpp"
+#include "simple/network-builder.hpp"
+#include "simple/weight-loader.hpp"
 
 // ==================================================================================
 // 0. Simplified AppCliArgs (Copied & Simplified from src/app.hpp)

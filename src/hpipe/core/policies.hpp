@@ -1,7 +1,7 @@
 #ifndef HPIPE_POLICY_HPP
 #define HPIPE_POLICY_HPP
 
-#include "hpipe-core.hpp"
+#include "hpipe/core/types.hpp"
 #include <cmath>
 #include <algorithm>
 

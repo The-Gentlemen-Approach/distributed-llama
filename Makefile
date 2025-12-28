@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = -std=c++11 -Werror -Wformat -Werror=format-security 
+CXXFLAGS = -std=c++11 -Werror -Wformat -Werror=format-security -I src
 
 ifndef TERMUX_VERSION
 	CXXFLAGS += -march=native -mtune=native
@@ -37,12 +37,14 @@ else
     DELETE_CMD = rm -fv
 endif
 
-.PHONY: clean dllama
+.PHONY: clean hpipe-root hpipe-worker simple-dllama
 
 clean:
-	$(DELETE_CMD) *.o dllama dllama-* socket-benchmark mmap-buffer-* *-test *.exe
+	$(DELETE_CMD) *.o hpipe-root hpipe-worker simple-dllama *-test *.exe
 
-# nn
+# ==========================================
+# NN Core
+# ==========================================
 nn-quants.o: src/nn/nn-quants.cpp
 	$(CXX) $(CXXFLAGS) -c $^ -o $@
 nn-core.o: src/nn/nn-core.cpp
@@ -57,10 +59,14 @@ nn-cpu-ops.o: src/nn/nn-cpu-ops.cpp
 	$(CXX) $(CXXFLAGS) -c $^ -o $@
 nn-cpu.o: src/nn/nn-cpu.cpp
 	$(CXX) $(CXXFLAGS) -c $^ -o $@
+
+# Tests
 nn-cpu-test: src/nn/nn-cpu-test.cpp nn-quants.o nn-core.o nn-executor.o llamafile-sgemm.o nn-cpu-ops.o nn-cpu.o
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LIBS)
 nn-cpu-ops-test: src/nn/nn-cpu-ops-test.cpp nn-quants.o nn-core.o nn-executor.o llamafile-sgemm.o nn-cpu.o
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LIBS)
+
+# Vulkan
 nn-vulkan.o: src/nn/nn-vulkan.cpp
 	$(CXX) $(CXXFLAGS) -c $^ -o $@
 
@@ -75,49 +81,62 @@ nn-vulkan-test: src/nn/nn-vulkan-test.cpp nn-quants.o nn-core.o nn-executor.o nn
 	$(CXX) $(CXXFLAGS) $(filter-out %.spv, $^) -o $@ $(LIBS)
 endif
 
-# llm
-tokenizer.o: src/tokenizer.cpp
+# ==========================================
+# Common
+# ==========================================
+llm-types.o: src/common/llm-types.cpp
 	$(CXX) $(CXXFLAGS) -c $^ -o $@
-llm.o: src/llm.cpp
+llm-builder.o: src/common/llm-builder.cpp
 	$(CXX) $(CXXFLAGS) -c $^ -o $@
-app.o: src/app.cpp
+tokenizer.o: src/common/tokenizer.cpp
 	$(CXX) $(CXXFLAGS) -c $^ -o $@
-tokenizer-test: src/tokenizer-test.cpp nn-quants.o nn-core.o llamafile-sgemm.o nn-cpu-ops.o tokenizer.o
+
+# ==========================================
+# Simple LLM
+# ==========================================
+simple-inference.o: src/simple/inference.cpp
+	$(CXX) $(CXXFLAGS) -c $^ -o $@
+simple-network-builder.o: src/simple/network-builder.cpp
+	$(CXX) $(CXXFLAGS) -c $^ -o $@
+simple-weight-loader.o: src/simple/weight-loader.cpp
+	$(CXX) $(CXXFLAGS) -c $^ -o $@
+
+SIMPLE_OBJS = simple-inference.o simple-network-builder.o simple-weight-loader.o
+COMMON_OBJS = llm-types.o llm-builder.o tokenizer.o
+NN_OBJS = nn-quants.o nn-core.o nn-executor.o llamafile-sgemm.o nn-cpu-ops.o nn-cpu.o
+
+simple-dllama: src/simple/main.cpp $(SIMPLE_OBJS) $(COMMON_OBJS) $(NN_OBJS) ${DEPS}
+	$(CXX) $(CXXFLAGS) $(filter-out %.spv, $^) -o $@ $(LIBS)
+
+# ==========================================
+# H-Pipe
+# ==========================================
+hpipe-network-base.o: src/hpipe/network/base.cpp
+	$(CXX) $(CXXFLAGS) -c $^ -o $@
+hpipe-network-root.o: src/hpipe/network/root.cpp
+	$(CXX) $(CXXFLAGS) -c $^ -o $@
+hpipe-network-worker.o: src/hpipe/network/worker.cpp
+	$(CXX) $(CXXFLAGS) -c $^ -o $@
+
+hpipe-llm-network-builder.o: src/hpipe/llm/network-builder.cpp
+	$(CXX) $(CXXFLAGS) -c $^ -o $@
+hpipe-llm-weight-loader.o: src/hpipe/llm/weight-loader.cpp
+	$(CXX) $(CXXFLAGS) -c $^ -o $@
+hpipe-llm-inference.o: src/hpipe/llm/inference.cpp
+	$(CXX) $(CXXFLAGS) -c $^ -o $@
+
+HPIPE_NET_OBJS = hpipe-network-base.o hpipe-network-root.o hpipe-network-worker.o
+HPIPE_LLM_OBJS = hpipe-llm-network-builder.o hpipe-llm-weight-loader.o hpipe-llm-inference.o
+
+hpipe-root: src/hpipe/main/root.cpp $(HPIPE_NET_OBJS) $(HPIPE_LLM_OBJS) $(COMMON_OBJS) $(NN_OBJS) nn-network.o ${DEPS}
+	$(CXX) $(CXXFLAGS) $(filter-out %.spv, $^) -o $@ $(LIBS)
+
+hpipe-worker: src/hpipe/main/worker.cpp $(HPIPE_NET_OBJS) $(HPIPE_LLM_OBJS) $(COMMON_OBJS) $(NN_OBJS) nn-network.o ${DEPS}
+	$(CXX) $(CXXFLAGS) $(filter-out %.spv, $^) -o $@ $(LIBS)
+
+# Tests
+hpipe-network-test: src/hpipe/tests/network-test.cpp $(HPIPE_NET_OBJS) $(COMMON_OBJS) $(NN_OBJS) nn-network.o
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LIBS)
-dllama: src/dllama.cpp nn-quants.o nn-core.o nn-executor.o nn-network.o llamafile-sgemm.o nn-cpu-ops.o nn-cpu.o tokenizer.o llm.o app.o ${DEPS}
-	$(CXX) $(CXXFLAGS) $(filter-out %.spv, $^) -o $@ $(LIBS)
-dllama-api: src/dllama-api.cpp nn-quants.o nn-core.o nn-executor.o nn-network.o llamafile-sgemm.o nn-cpu-ops.o nn-cpu.o tokenizer.o llm.o app.o ${DEPS}
-	$(CXX) $(CXXFLAGS) $(filter-out %.spv, $^) -o $@ $(LIBS)
 
-# Simple LLM (단일 디바이스, 분산 처리 없음)
-# - 워커 분산 로직 제거: loadSimpleLlmWeights로 슬라이싱 없이 전체 가중치 로드
-# - 네트워크 통신 없음: SimpleLlmInference에서 제어 패킷 전송 제거
-simple-llm.o: src/simple-llm.cpp
-	$(CXX) $(CXXFLAGS) -c $^ -o $@
-llm-builder.o: src/llm-builder.cpp
-	$(CXX) $(CXXFLAGS) -c $^ -o $@
-simple-dllama: src/simple-dllama.cpp nn-quants.o nn-core.o nn-executor.o llamafile-sgemm.o nn-cpu-ops.o nn-cpu.o tokenizer.o simple-llm.o llm-builder.o ${DEPS}
-	$(CXX) $(CXXFLAGS) $(filter-out %.spv, $^) -o $@ $(LIBS)
-
-# H-Pipe (파이프라인 병렬화)
-# - 선형 파이프라인 토폴로지: Root → Worker1 → Worker2 → ... → Root
-# - ACK 기반 역방향 흐름 제어
-# - 청크 기반 스트리밍 처리
-hpipe-network.o: src/hpipe-network.cpp
-	$(CXX) $(CXXFLAGS) -c $^ -o $@
-hpipe-network-test: src/hpipe-network-test.cpp nn-quants.o nn-core.o nn-executor.o nn-network.o llamafile-sgemm.o nn-cpu-ops.o nn-cpu.o hpipe-network.o simple-llm.o llm-builder.o tokenizer.o
+hpipe-pipeline-test: src/hpipe/tests/pipeline-test.cpp $(HPIPE_NET_OBJS) $(HPIPE_LLM_OBJS) $(COMMON_OBJS) $(NN_OBJS) nn-network.o
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LIBS)
-
-hpipe-pipeline-test: src/hpipe-pipeline-test.cpp nn-quants.o nn-core.o nn-executor.o nn-network.o llamafile-sgemm.o nn-cpu-ops.o nn-cpu.o hpipe-network.o simple-llm.o llm-builder.o tokenizer.o
-	$(CXX) $(CXXFLAGS) $^ -o $@ $(LIBS)
-
-# H-Pipe LLM execution
-hpipe-llm.o: src/hpipe-llm.cpp
-	$(CXX) $(CXXFLAGS) -c $^ -o $@
-
-# H-Pipe Root and Worker binaries
-hpipe-worker: src/hpipe-worker.cpp nn-quants.o nn-core.o nn-executor.o nn-network.o llamafile-sgemm.o nn-cpu-ops.o nn-cpu.o hpipe-network.o hpipe-llm.o simple-llm.o llm-builder.o tokenizer.o ${DEPS}
-	$(CXX) $(CXXFLAGS) $(filter-out %.spv, $^) -o $@ $(LIBS)
-
-hpipe-root: src/hpipe-root.cpp nn-quants.o nn-core.o nn-executor.o nn-network.o llamafile-sgemm.o nn-cpu-ops.o nn-cpu.o hpipe-network.o simple-llm.o llm-builder.o tokenizer.o ${DEPS}
-	$(CXX) $(CXXFLAGS) $(filter-out %.spv, $^) -o $@ $(LIBS)
