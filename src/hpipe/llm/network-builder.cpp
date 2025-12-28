@@ -34,7 +34,6 @@ SimpleLlmNet buildHpipeLlmNet(SimpleLlmHeader *h, NnUint nBatches, int startSegm
     );
 
     // Loop through assigned segments
-    bool firstAttentionSeen = false;
     for (int seg = startSegment; seg <= endSegment; seg++) {
         if (seg == 0) {
             // Segment 0: Embedding
@@ -56,9 +55,9 @@ SimpleLlmNet buildHpipeLlmNet(SimpleLlmHeader *h, NnUint nBatches, int startSegm
                 const NnUint kBufferIndex = nodeBuilder.addBuffer("k", config.kvCacheSlice.keySize);
                 const NnUint vBufferIndex = nodeBuilder.addBuffer("v", config.kvCacheSlice.valueSize);
 
-                // First attention segment for this worker should use CAST instead of MERGE_ADD
-                bool isFirstForWorker = !firstAttentionSeen && (startSegment > 0);
-                firstAttentionSeen = true;
+                // First segment for worker (if not embedding/classifier) should use CAST
+                // This applies when worker receives data from previous worker
+                bool isFirstForWorker = (seg == startSegment) && (startSegment > 0);
 
                 // Last segment for worker should output accumulated residual
                 bool isLastForWorker = (seg == endSegment);

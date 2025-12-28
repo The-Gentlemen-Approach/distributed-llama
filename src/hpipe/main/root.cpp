@@ -116,9 +116,9 @@ void runRoot(const RootArgs& args) {
         tokenizer.encode(args.prompt, promptTokens, &nPromptTokens, false, false);
         LOG("✓ " << nPromptTokens << " tokens");
 
-        // Partition segments
+        // Partition segments (one-by-one, not layer-based)
         int nWorkers = args.workerAddrs.size();
-        UniformPartitioningPolicy policy;
+        UniformSegmentPartitioningPolicy policy;
         std::vector<SegmentRange> segmentRanges = policy.assignSegments(header, nWorkers);
 
         LOG("📊 Segment partitioning (nWorkers=" << nWorkers << "):");
