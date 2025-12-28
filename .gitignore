@@ -10,7 +10,6 @@ __pycache__
 
 *-test
 /models
-main
 run*.sh
 server
 /dllama
