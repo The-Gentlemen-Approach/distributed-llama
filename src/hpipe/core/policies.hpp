@@ -9,21 +9,52 @@
 // 레이어 할당 정책 구현체 (Partitioning Policy Implementations)
 // ==================================================================================
 
-// 균등 할당 정책: 전체 레이어를 워커 수만큼 균등하게 나눕니다.
-// CRITICAL: 각 레이어는 2개의 segment (attention + FFN)로 구성되어 있으므로,
-// 레이어를 분할하지 않도록 segment를 할당해야 합니다.
-class UniformPartitioningPolicy : public IPartitioningPolicy {
+// 균등 할당 정책: 전체 세그먼트를 워커 수만큼 균등하게 나눕니다.
+// 레이어가 아닌 세그먼트 단위로 분할하여 더 세밀한 부하 분산을 제공합니다.
+// ⚠️ WARNING: This may split layers between workers, which currently has bugs!
+class UniformSegmentPartitioningPolicy : public IPartitioningPolicy {
 public:
     std::vector<SegmentRange> assignSegments(const SimpleLlmHeader& header, int n_workers) override {
         std::vector<SegmentRange> ranges;
 
-        // Segment structure:
+        // Segment structure (one by one):
         // - Segment 0: Embedding
         // - Segments 1-2: Layer 0 (1=attn, 2=ffn)
-        // - Segments 3-4: Layer 1
+        // - Segments 3-4: Layer 1 (3=attn, 4=ffn)
         // - ...
         // - Segments 2*nLayers-1, 2*nLayers: Layer nLayers-1
         // - Segment 2*nLayers+1: Classifier
+        //
+        // Total segments = 1 (emb) + 2*nLayers (layers) + 1 (cls) = 2*nLayers + 2
+
+        int totalSegments = 2 * header.nLayers + 2;
+        int segments_per_worker = totalSegments / n_workers;
+        int remainder = totalSegments % n_workers;
+
+        int current_segment = 0;
+
+        for (int i = 0; i < n_workers; i++) {
+            int start = current_segment;
+
+            // Each worker gets base amount + 1 extra if they're in the remainder group
+            int num_segments = segments_per_worker + (i < remainder ? 1 : 0);
+            current_segment += num_segments;
+
+            int end = current_segment - 1;
+
+            ranges.push_back({start, end});
+        }
+
+        return ranges;
+    }
+};
+
+// Layer-aware 할당 정책: 레이어를 절대 분할하지 않음 (attn + ffn은 항상 같은 워커)
+// 더 안정적이지만 부하 분산이 덜 세밀합니다.
+class UniformPartitioningPolicy : public IPartitioningPolicy {
+public:
+    std::vector<SegmentRange> assignSegments(const SimpleLlmHeader& header, int n_workers) override {
+        std::vector<SegmentRange> ranges;
 
         int nLayers = header.nLayers;
         int layers_per_worker = nLayers / n_workers;

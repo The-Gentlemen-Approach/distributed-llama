@@ -60,12 +60,15 @@ SimpleLlmNet buildHpipeLlmNet(SimpleLlmHeader *h, NnUint nBatches, int startSegm
                 bool isFirstForWorker = !firstAttentionSeen && (startSegment > 0);
                 firstAttentionSeen = true;
 
+                // Last segment for worker should output accumulated residual
+                bool isLastForWorker = (seg == endSegment);
+
                 buildAttentionSegment(
                     &nodeBuilder, &buffers, &n, layerIndex,
                     kBufferIndex, vBufferIndex, config.zqPipeIndex,
                     config.ropeSlice, config.kvCacheSlice, config.multiHeadAttSlice,
                     config.nQNormColumns, config.nKNormColumns,
-                    isFirstForWorker
+                    isFirstForWorker, isLastForWorker
                 );
             } else {
                 // FFN Segment

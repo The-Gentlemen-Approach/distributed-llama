@@ -184,7 +184,8 @@ void buildAttentionSegment(
     const NnMultiHeadAttSlice &multiHeadAttSlice,
     NnUint nQNormColumns,
     NnUint nKNormColumns,
-    bool isFirstSegmentForWorker
+    bool isFirstSegmentForWorker,
+    bool isLastSegmentForWorker
 ) {
     SimpleLlmHeader *h = net->header;
     bool isFirstLayer = (layerIndex == 0) || isFirstSegmentForWorker;
@@ -340,12 +341,30 @@ void buildAttentionSegment(
         pointerBatchConfig(SRC_BUFFER, buf->yBufferIndex),
         size2D(h->weightType, net->woSlice.n0, net->woSlice.d),
         NnMatmulOpConfig{0, 0, moeExpertIndexesBufferIndex});
-    att.addOp(
-        OP_CAST, "block_cast_d", layerIndex,
-        pointerBatchConfig(SRC_BUFFER, buf->yBufferIndex),
-        pointerBatchedSliceConfig(SRC_PIPE, zqPipeIndex),
-        size0(),
-        NnCastOpCodeConfig{});
+
+    if (isLastSegmentForWorker) {
+        // Last segment for worker: Output accumulated residual + attention result
+        att.addOp(
+            OP_MERGE_ADD, "block_merge_add_att_boundary", layerIndex,
+            pointerBatchConfig(SRC_BUFFER, buf->yBufferIndex),
+            pointerBatchConfig(SRC_BUFFER, buf->xBufferIndex),
+            size0(),
+            NnMergeAddOpCodeConfig{});
+        att.addOp(
+            OP_CAST, "block_cast_d", layerIndex,
+            pointerBatchConfig(SRC_BUFFER, buf->xBufferIndex),
+            pointerBatchedSliceConfig(SRC_PIPE, zqPipeIndex),
+            size0(),
+            NnCastOpCodeConfig{});
+    } else {
+        // Internal segment: Output only attention result (delta)
+        att.addOp(
+            OP_CAST, "block_cast_d", layerIndex,
+            pointerBatchConfig(SRC_BUFFER, buf->yBufferIndex),
+            pointerBatchedSliceConfig(SRC_PIPE, zqPipeIndex),
+            size0(),
+            NnCastOpCodeConfig{});
+    }
 
     nodeBuilder->addSegment(att.build());
 }

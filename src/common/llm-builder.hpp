@@ -128,7 +128,8 @@ void buildAttentionSegment(
     const NnMultiHeadAttSlice &multiHeadAttSlice,
     NnUint nQNormColumns,
     NnUint nKNormColumns,
-    bool isFirstSegmentForWorker = false
+    bool isFirstSegmentForWorker = false,
+    bool isLastSegmentForWorker = false
 );
 
 /**
