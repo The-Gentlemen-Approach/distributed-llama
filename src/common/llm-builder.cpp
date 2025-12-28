@@ -5,16 +5,16 @@
 // Network Initialization
 // ==================================================================================
 
-LlmNetworkConfig initializeLlmNetwork(SimpleLlmNet *n, SimpleLlmHeader *h, NnUint nBatches) {
+LlmNetworkConfig initializeLlmNetwork(LlmNet *n, LlmHeader *h, NnUint nBatches) {
     // Calculate dimensions
     NnUint nExpertsOr1 = std::max(h->nExperts, 1u);
     NnUint nActiveExpertsOr1 = std::max(h->nActiveExperts, 1u);
     NnUint ffDim = h->hiddenDim;
 
-    if (h->archType == SIMPLE_QWEN3_MOE)
+    if (h->archType == LLM_QWEN3_MOE)
         ffDim = h->moeHiddenDim;
 
-    // Initialize SimpleLlmNet sizes
+    // Initialize LlmNet sizes
     n->tokenEmbeddingSize = size2D(F_32, h->vocabSize, h->dim);
     n->rmsNormSize = size1D(F_32, h->dim);
     n->qkRmsNormSize = size1D(F_32, h->headDim);
@@ -35,7 +35,7 @@ LlmNetworkConfig initializeLlmNetwork(SimpleLlmNet *n, SimpleLlmHeader *h, NnUin
     config.nQNormColumns = 1;
     config.nKNormColumns = 1;
     config.nInvBufferColumns = 1;
-    if (h->archType == SIMPLE_QWEN3 || h->archType == SIMPLE_QWEN3_MOE) {
+    if (h->archType == LLM_QWEN3 || h->archType == LLM_QWEN3_MOE) {
         config.nQNormColumns = n->qSlice.d0 / h->headDim;
         config.nKNormColumns = n->kSlice.d0 / h->headDim;
         config.nInvBufferColumns = std::max(config.nQNormColumns, config.nKNormColumns);
@@ -94,8 +94,8 @@ LlmNetworkConfig initializeLlmNetwork(SimpleLlmNet *n, SimpleLlmHeader *h, NnUin
 
 LlmBufferIndices allocateLlmBuffers(
     NnNodeConfigBuilder *nodeBuilder,
-    SimpleLlmHeader *h,
-    SimpleLlmNet *n,
+    LlmHeader *h,
+    LlmNet *n,
     NnUint nBatches,
     NnUint nInvBufferColumns,
     const NnRopeSlice &ropeSlice,
@@ -174,7 +174,7 @@ void buildEmbeddingSegment(
 void buildAttentionSegment(
     NnNodeConfigBuilder *nodeBuilder,
     const LlmBufferIndices *buf,
-    SimpleLlmNet *net,
+    LlmNet *net,
     NnUint layerIndex,
     NnUint kBufferIndex,
     NnUint vBufferIndex,
@@ -187,7 +187,7 @@ void buildAttentionSegment(
     bool isFirstSegmentForWorker,
     bool isLastSegmentForWorker
 ) {
-    SimpleLlmHeader *h = net->header;
+    LlmHeader *h = net->header;
     bool isFirstLayer = (layerIndex == 0) || isFirstSegmentForWorker;
     NnUint moeExpertIndexesBufferIndex = 0;
 
@@ -254,7 +254,7 @@ void buildAttentionSegment(
         NnMatmulOpConfig{0, 0, moeExpertIndexesBufferIndex});
 
     // QK RMS Norm (Qwen3 only)
-    if (h->archType == SIMPLE_QWEN3 || h->archType == SIMPLE_QWEN3_MOE) {
+    if (h->archType == LLM_QWEN3 || h->archType == LLM_QWEN3_MOE) {
         att.addOp(OP_INV_RMS, "block_norm_pre_q", layerIndex,
             pointerBatchConfig(SRC_BUFFER, buf->qBufferIndex),
             pointerBatchConfig(SRC_BUFFER, buf->invRmsBufferIndex),
@@ -376,13 +376,13 @@ void buildAttentionSegment(
 void buildFFNSegment(
     NnNodeConfigBuilder *nodeBuilder,
     const LlmBufferIndices *buf,
-    SimpleLlmNet *net,
+    LlmNet *net,
     NnUint layerIndex,
     NnUint zqPipeIndex,
     bool isLastSegmentForWorker,
     bool isFirstSegmentForWorker
 ) {
-    SimpleLlmHeader *h = net->header;
+    LlmHeader *h = net->header;
     NnUint moeExpertIndexesBufferIndex = 0;
 
     NnSegmentConfigBuilder ff;
@@ -511,13 +511,13 @@ void buildFFNSegment(
 void buildMoEFFNSegment(
     NnNodeConfigBuilder *nodeBuilder,
     const LlmBufferIndices *buf,
-    SimpleLlmNet *net,
+    LlmNet *net,
     NnUint layerIndex,
     NnUint zqPipeIndex,
     bool isLastSegmentForWorker,
     bool isFirstSegmentForWorker
 ) {
-    SimpleLlmHeader *h = net->header;
+    LlmHeader *h = net->header;
 
     NnSegmentConfigBuilder ff;
 
@@ -680,10 +680,10 @@ void buildMoEFFNSegment(
 void buildClassifierSegment(
     NnNodeConfigBuilder *nodeBuilder,
     const LlmBufferIndices *buf,
-    SimpleLlmNet *net,
+    LlmNet *net,
     NnUint zqPipeIndex
 ) {
-    SimpleLlmHeader *h = net->header;
+    LlmHeader *h = net->header;
 
     NnSegmentConfigBuilder end;
 
@@ -734,7 +734,7 @@ void buildClassifierSegment(
     nodeBuilder->addSegment(end.build());
 }
 
-void releaseSimpleLlmNet(SimpleLlmNet *net) {
+void releaseLlmNet(LlmNet *net) {
     releaseNodeConfig(&net->nodeConfig);
     releaseNetConfig(&net->netConfig);
 }

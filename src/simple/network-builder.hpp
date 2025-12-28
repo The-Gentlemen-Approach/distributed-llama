@@ -7,6 +7,6 @@
 /**
  * Builds the network for single-node execution.
  */
-SimpleLlmNet buildSimpleLlmNet(SimpleLlmHeader *h, NnUint nBatches);
+LlmNet buildLlmNet(LlmHeader *h, NnUint nBatches);
 
 #endif

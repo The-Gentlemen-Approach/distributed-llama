@@ -7,6 +7,6 @@
 /**
  * Loads weights into the network.
  */
-void loadSimpleLlmNetWeight(const char* path, SimpleLlmNet *net, NnExecutor *executor);
+void loadLlmNetWeight(const char* path, LlmNet *net, NnExecutor *executor);
 
 #endif

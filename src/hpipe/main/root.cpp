@@ -94,7 +94,7 @@ void runRoot(const RootArgs& args) {
     try {
         // Load model header
         LOG("📂 Loading model header...");
-        SimpleLlmHeader header = loadSimpleLlmHeader(args.modelPath, 0, F_32);
+        LlmHeader header = loadLlmHeader(args.modelPath, 0, F_32);
 
         if (header.weightType == F_Q40 && header.syncType == F_32) {
             LOG("⚠️  Automatically switching buffer type to Q80 for Q40 model compatibility.");

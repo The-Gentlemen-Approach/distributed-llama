@@ -3,8 +3,8 @@
 #include "nn/nn-config-builder.hpp"
 #include <vector>
 
-SimpleLlmNet buildHpipeLlmNet(SimpleLlmHeader *h, NnUint nBatches, int startSegment, int endSegment) {
-    SimpleLlmNet n;
+LlmNet buildHpipeLlmNet(LlmHeader *h, NnUint nBatches, int startSegment, int endSegment) {
+    LlmNet n;
 
     int maxSegment = 2 * h->nLayers + 1; // 0 (Emb) + 2*N (Layers) + 1 (Class)
     if (endSegment == -1) endSegment = maxSegment;
@@ -74,7 +74,7 @@ SimpleLlmNet buildHpipeLlmNet(SimpleLlmHeader *h, NnUint nBatches, int startSegm
                 bool isLastForWorker = (seg == endSegment);
                 bool isFirstForWorker = (seg == startSegment);
 
-                if (h->archType == SIMPLE_QWEN3_MOE) {
+                if (h->archType == LLM_QWEN3_MOE) {
                     buildMoEFFNSegment(&nodeBuilder, &buffers, &n, layerIndex, config.zqPipeIndex, isLastForWorker, isFirstForWorker);
                 } else {
                     buildFFNSegment(&nodeBuilder, &buffers, &n, layerIndex, config.zqPipeIndex, isLastForWorker, isFirstForWorker);

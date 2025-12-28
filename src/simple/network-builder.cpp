@@ -6,8 +6,8 @@
 // Build Network
 // ==================================================================================
 
-SimpleLlmNet buildSimpleLlmNet(SimpleLlmHeader *h, NnUint nBatches) {
-    SimpleLlmNet n;
+LlmNet buildLlmNet(LlmHeader *h, NnUint nBatches) {
+    LlmNet n;
 
     // ==================================================================================
     // Initialize network (slices, pipes, config)
@@ -42,7 +42,7 @@ SimpleLlmNet buildSimpleLlmNet(SimpleLlmHeader *h, NnUint nBatches) {
         );
 
         // FFN segment (MoE or non-MoE)
-        if (h->archType == SIMPLE_QWEN3_MOE) {
+        if (h->archType == LLM_QWEN3_MOE) {
             buildMoEFFNSegment(&nodeBuilder, &buffers, &n, layerIndex, config.zqPipeIndex);
         } else {
             buildFFNSegment(&nodeBuilder, &buffers, &n, layerIndex, config.zqPipeIndex);

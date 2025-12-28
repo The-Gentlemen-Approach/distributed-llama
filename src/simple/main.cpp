@@ -154,7 +154,7 @@ public:
 
 struct SimpleInferenceContext {
     AppCliArgs *args;
-    SimpleLlmHeader *header;
+    LlmHeader *header;
     SimpleLlmInference *inference;
     Tokenizer *tokenizer;
     Sampler *sampler;
@@ -263,7 +263,7 @@ static std::vector<NnExecutorDevice> resolveDevices(AppCliArgs *args, NnNetConfi
 
 void runSimpleApp(AppCliArgs *args) {
     // 1. Load Header
-    SimpleLlmHeader header = loadSimpleLlmHeader(args->modelPath, args->maxSeqLen, args->syncType);
+    LlmHeader header = loadLlmHeader(args->modelPath, args->maxSeqLen, args->syncType);
 
     if (header.weightType == F_Q40 && header.syncType == F_32) {
         printf("⚠️ Automatically switching buffer type to Q80 for Q40 model compatibility.\n");
@@ -279,13 +279,13 @@ void runSimpleApp(AppCliArgs *args) {
     Sampler sampler(tokenizer.vocabSize, args->temperature, args->topp, args->seed);
 
     // 4. Build Network
-    SimpleLlmNet net = buildSimpleLlmNet(&header, args->nBatches);
-    std::unique_ptr<SimpleLlmNet, void(*)(SimpleLlmNet *)> netPtr(&net, releaseSimpleLlmNet);
+    LlmNet net = buildLlmNet(&header, args->nBatches);
+    std::unique_ptr<LlmNet, void(*)(LlmNet *)> netPtr(&net, releaseLlmNet);
 
     NnNodeConfig *rootNodeConfig = &net.nodeConfig;
 
     if (args->info) {
-        printSimpleLlmHeader(&header);
+        printLlmHeader(&header);
     }
 
     // 5. Execution Context
@@ -299,7 +299,7 @@ void runSimpleApp(AppCliArgs *args) {
     NnExecutor executor(&net.netConfig, rootNodeConfig, &devices, &execution, synchronizer.get(), args->benchmark);
 
     // 7. Load Weights (Locally)
-    loadSimpleLlmNetWeight(args->modelPath, &net, &executor);
+    loadLlmNetWeight(args->modelPath, &net, &executor);
 
     // 8. Inference Object
     SimpleLlmInference rootInference(&net, &execution, &executor);

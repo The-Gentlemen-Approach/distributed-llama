@@ -5,7 +5,7 @@
 // HPipeLlmInference Implementation
 // ==================================================================================
 
-HPipeLlmInference::HPipeLlmInference(SimpleLlmNet *net, NnNetExecution *execution, NnExecutor *executor, int startSegment, int endSegment) {
+HPipeLlmInference::HPipeLlmInference(LlmNet *net, NnNetExecution *execution, NnExecutor *executor, int startSegment, int endSegment) {
     this->header = net->header;
     this->tokenPipe = (float *)execution->pipes[net->tokenPipeIndex];
     this->positionPipe = (float *)execution->pipes[net->positionPipeIndex];

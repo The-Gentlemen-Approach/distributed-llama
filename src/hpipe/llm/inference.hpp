@@ -18,7 +18,7 @@ public:
 private:
     float *tokenPipe;
     float *positionPipe;
-    SimpleLlmHeader *header;
+    LlmHeader *header;
     NnNetExecution *execution;
     NnExecutor *executor;
     
@@ -27,7 +27,7 @@ private:
     NnUint zqPipeIndex;
 
 public:
-    HPipeLlmInference(SimpleLlmNet *net, NnNetExecution *execution, NnExecutor *executor, int startSegment, int endSegment);
+    HPipeLlmInference(LlmNet *net, NnNetExecution *execution, NnExecutor *executor, int startSegment, int endSegment);
     void setBatchSize(NnUint batchSize);
     void setPosition(NnUint position);
     void setToken(NnUint batchIndex, NnUint token);

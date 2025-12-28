@@ -14,7 +14,7 @@
 // ⚠️ WARNING: This may split layers between workers, which currently has bugs!
 class UniformSegmentPartitioningPolicy : public IPartitioningPolicy {
 public:
-    std::vector<SegmentRange> assignSegments(const SimpleLlmHeader& header, int n_workers) override {
+    std::vector<SegmentRange> assignSegments(const LlmHeader& header, int n_workers) override {
         std::vector<SegmentRange> ranges;
 
         // Segment structure (one by one):
@@ -53,7 +53,7 @@ public:
 // 더 안정적이지만 부하 분산이 덜 세밀합니다.
 class UniformPartitioningPolicy : public IPartitioningPolicy {
 public:
-    std::vector<SegmentRange> assignSegments(const SimpleLlmHeader& header, int n_workers) override {
+    std::vector<SegmentRange> assignSegments(const LlmHeader& header, int n_workers) override {
         std::vector<SegmentRange> ranges;
 
         int nLayers = header.nLayers;

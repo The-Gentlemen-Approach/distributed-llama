@@ -13,9 +13,9 @@
 // Helper Functions
 // ==================================================================================
 
-static const char *hiddenActToString(SimpleLlmHiddenAct act) {
-    if (act == SIMPLE_HIDDEN_ACT_GELU) return "Gelu";
-    if (act == SIMPLE_HIDDEN_ACT_SILU) return "Silu";
+static const char *hiddenActToString(LlmHiddenAct act) {
+    if (act == LLM_HIDDEN_ACT_GELU) return "Gelu";
+    if (act == LLM_HIDDEN_ACT_SILU) return "Silu";
     throw std::runtime_error("Unsupported hidden act");
 }
 
@@ -26,10 +26,10 @@ static const char *ropeTypeToString(NnRopeType type) {
     throw std::runtime_error("Unsupported rope type");
 }
 
-static const char *archTypeToString(SimpleLlmArchType type) {
-    if (type == SIMPLE_LLAMA) return "Llama";
-    if (type == SIMPLE_QWEN3) return "Qwen3";
-    if (type == SIMPLE_QWEN3_MOE) return "Qwen3 MoE";
+static const char *archTypeToString(LlmArchType type) {
+    if (type == LLM_LLAMA) return "Llama";
+    if (type == LLM_QWEN3) return "Qwen3";
+    if (type == LLM_QWEN3_MOE) return "Qwen3 MoE";
     throw std::runtime_error("Unsupported architecture");
 }
 
@@ -43,11 +43,11 @@ static float convertNormEpsilon(int value) {
 // Load & Print Header
 // ==================================================================================
 
-SimpleLlmHeader loadSimpleLlmHeader(const char *path, const unsigned int maxSeqLen, NnFloatType syncType) {
-    SimpleLlmHeader header;
-    std::memset(&header, 0, sizeof(SimpleLlmHeader));
+LlmHeader loadLlmHeader(const char *path, const unsigned int maxSeqLen, NnFloatType syncType) {
+    LlmHeader header;
+    std::memset(&header, 0, sizeof(LlmHeader));
     header.weightType = F_UNK;
-    header.hiddenAct = SIMPLE_HIDDEN_ACT_SILU;
+    header.hiddenAct = LLM_HIDDEN_ACT_SILU;
     header.ropeType = ROPE_LLAMA;
     header.ropeTheta = 10000.0f;
     header.ropeScalingFactor = 1.0f;
@@ -81,28 +81,28 @@ SimpleLlmHeader loadSimpleLlmHeader(const char *path, const unsigned int maxSeqL
     for (int i = 0; i < nKv; i += 2) {
         int key = buffer[i];
         int value = buffer[i + 1];
-        if (key == SIMPLE_VERSION) header.version = value;
-        else if (key == SIMPLE_ARCH_TYPE) header.archType = (SimpleLlmArchType)value;
-        else if (key == SIMPLE_DIM) header.dim = value;
-        else if (key == SIMPLE_HIDDEN_DIM) header.hiddenDim = value;
-        else if (key == SIMPLE_N_LAYERS) header.nLayers = value;
-        else if (key == SIMPLE_N_HEADS) header.nHeads = value;
-        else if (key == SIMPLE_N_KV_HEADS) header.nKvHeads = value;
-        else if (key == SIMPLE_N_EXPERTS) header.nExperts = value;
-        else if (key == SIMPLE_N_ACTIVE_EXPERTS) header.nActiveExperts = value;
-        else if (key == SIMPLE_VOCAB_SIZE) header.vocabSize = value;
-        else if (key == SIMPLE_SEQ_LEN) header.seqLen = value;
-        else if (key == SIMPLE_HIDDEN_ACT) header.hiddenAct = (SimpleLlmHiddenAct)value;
-        else if (key == SIMPLE_ROPE_THETA) header.ropeTheta = (float)value;
-        else if (key == SIMPLE_WEIGHT_FLOAT_TYPE) header.weightType = (NnFloatType)value;
-        else if (key == SIMPLE_ROPE_SCALING_FACTOR) header.ropeScalingFactor = (float)value;
-        else if (key == SIMPLE_ROPE_SCALING_LOW_FREQ_FACTOR) header.ropeScalingLowFreqFactor = (float)value;
-        else if (key == SIMPLE_ROPE_SCALING_HIGH_FREQ_FACTORY) header.ropeScalingHighFreqFactory = (float)value;
-        else if (key == SIMPLE_ROPE_SCALING_ORIG_MAX_SEQ_LEN) header.ropeScalingOrigMaxSeqLen = value;
-        else if (key == SIMPLE_ROPE_TYPE) header.ropeType = (NnRopeType)value;
-        else if (key == SIMPLE_HEAD_DIM) header.headDim = value;
-        else if (key == SIMPLE_NORM_EPSILON) header.normEpsilon = convertNormEpsilon(value);
-        else if (key == SIMPLE_MOE_HIDDEN_DIM) header.moeHiddenDim = value;
+        if (key == LLM_VERSION) header.version = value;
+        else if (key == LLM_ARCH_TYPE) header.archType = (LlmArchType)value;
+        else if (key == LLM_DIM) header.dim = value;
+        else if (key == LLM_HIDDEN_DIM) header.hiddenDim = value;
+        else if (key == LLM_N_LAYERS) header.nLayers = value;
+        else if (key == LLM_N_HEADS) header.nHeads = value;
+        else if (key == LLM_N_KV_HEADS) header.nKvHeads = value;
+        else if (key == LLM_N_EXPERTS) header.nExperts = value;
+        else if (key == LLM_N_ACTIVE_EXPERTS) header.nActiveExperts = value;
+        else if (key == LLM_VOCAB_SIZE) header.vocabSize = value;
+        else if (key == LLM_SEQ_LEN) header.seqLen = value;
+        else if (key == LLM_HIDDEN_ACT) header.hiddenAct = (LlmHiddenAct)value;
+        else if (key == LLM_ROPE_THETA) header.ropeTheta = (float)value;
+        else if (key == LLM_WEIGHT_FLOAT_TYPE) header.weightType = (NnFloatType)value;
+        else if (key == LLM_ROPE_SCALING_FACTOR) header.ropeScalingFactor = (float)value;
+        else if (key == LLM_ROPE_SCALING_LOW_FREQ_FACTOR) header.ropeScalingLowFreqFactor = (float)value;
+        else if (key == LLM_ROPE_SCALING_HIGH_FREQ_FACTORY) header.ropeScalingHighFreqFactory = (float)value;
+        else if (key == LLM_ROPE_SCALING_ORIG_MAX_SEQ_LEN) header.ropeScalingOrigMaxSeqLen = value;
+        else if (key == LLM_ROPE_TYPE) header.ropeType = (NnRopeType)value;
+        else if (key == LLM_HEAD_DIM) header.headDim = value;
+        else if (key == LLM_NORM_EPSILON) header.normEpsilon = convertNormEpsilon(value);
+        else if (key == LLM_MOE_HIDDEN_DIM) header.moeHiddenDim = value;
         else throw std::runtime_error("Unsupported header key");
     }
 
@@ -120,12 +120,12 @@ SimpleLlmHeader loadSimpleLlmHeader(const char *path, const unsigned int maxSeqL
     header.syncType = syncType;
     header.fileSize = (NnSize)seekToEnd(fd);
 
-    if (header.archType == SIMPLE_QWEN3 || header.archType == SIMPLE_QWEN3_MOE)
+    if (header.archType == LLM_QWEN3 || header.archType == LLM_QWEN3_MOE)
         header.ropeType = ROPE_FALCON;
     return header;
 }
 
-void printSimpleLlmHeader(SimpleLlmHeader *header) {
+void printLlmHeader(LlmHeader *header) {
     printf("💡 Arch: %s\n", archTypeToString(header->archType));
     printf("💡 HiddenAct: %s\n", hiddenActToString(header->hiddenAct));
     printf("💡 Dim: %u\n", header->dim);

@@ -5,7 +5,7 @@
 // SimpleLlmInference Implementation
 // ==================================================================================
 
-SimpleLlmInference::SimpleLlmInference(SimpleLlmNet *net, NnNetExecution *execution, NnExecutor *executor) {
+SimpleLlmInference::SimpleLlmInference(LlmNet *net, NnNetExecution *execution, NnExecutor *executor) {
     this->header = net->header;
     this->tokenPipe = (float *)execution->pipes[net->tokenPipeIndex];
     this->positionPipe = (float *)execution->pipes[net->positionPipeIndex];

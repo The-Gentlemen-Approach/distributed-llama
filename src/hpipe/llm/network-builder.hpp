@@ -20,8 +20,8 @@
  * @param nBatches Number of batches
  * @param startSegment Index of the first segment assigned to this node
  * @param endSegment Index of the last segment assigned to this node
- * @return Initialized SimpleLlmNet structure
+ * @return Initialized LlmNet structure
  */
-SimpleLlmNet buildHpipeLlmNet(SimpleLlmHeader *h, NnUint nBatches, int startSegment, int endSegment);
+LlmNet buildHpipeLlmNet(LlmHeader *h, NnUint nBatches, int startSegment, int endSegment);
 
 #endif

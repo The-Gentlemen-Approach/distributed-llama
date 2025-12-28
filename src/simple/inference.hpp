@@ -15,12 +15,12 @@ public:
 private:
     float *tokenPipe;
     float *positionPipe;
-    SimpleLlmHeader *header;
+    LlmHeader *header;
     NnNetExecution *execution;
     NnExecutor *executor;
     
 public:
-    SimpleLlmInference(SimpleLlmNet *net, NnNetExecution *execution, NnExecutor *executor);
+    SimpleLlmInference(LlmNet *net, NnNetExecution *execution, NnExecutor *executor);
     void setBatchSize(NnUint batchSize);
     void setPosition(NnUint position);
     void setToken(NnUint batchIndex, NnUint token);

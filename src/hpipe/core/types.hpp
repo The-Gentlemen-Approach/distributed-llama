@@ -45,7 +45,7 @@ struct HPipeConfig {
     
     // 모델 정보
     char model_path[512]; // 모델 파일 경로
-    SimpleLlmHeader model_header; // 모델 메타데이터
+    LlmHeader model_header; // 모델 메타데이터
 };
 
 // 런타임 데이터 패킷 헤더
@@ -74,7 +74,7 @@ public:
     
     // 모델 헤더와 워커 수를 기반으로 각 워커의 레이어 범위를 결정합니다.
     virtual std::vector<SegmentRange> assignSegments(
-        const SimpleLlmHeader& header, 
+        const LlmHeader& header, 
         int n_workers
     ) = 0;
 };

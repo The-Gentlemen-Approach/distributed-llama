@@ -39,7 +39,7 @@ public:
     }
 };
 
-void loadHpipeLlmNetWeight(const char *path, SimpleLlmNet *net, NnExecutor *executor, int startSegment, int endSegment) {
+void loadHpipeLlmNetWeight(const char *path, LlmNet *net, NnExecutor *executor, int startSegment, int endSegment) {
     MmapFile file;
     openMmapFile(&file, path, net->header->fileSize);
     std::unique_ptr<MmapFile, void(*)(MmapFile *)> fdPtr(&file, closeMmapFile);
@@ -130,7 +130,7 @@ void loadHpipeLlmNetWeight(const char *path, SimpleLlmNet *net, NnExecutor *exec
         }
 
         // QK RMS Norms (Qwen3 models)
-        if (net->header->archType == SIMPLE_QWEN3 || net->header->archType == SIMPLE_QWEN3_MOE) {
+        if (net->header->archType == LLM_QWEN3 || net->header->archType == LLM_QWEN3_MOE) {
             if (loadAttention) {
                 loader.loadAll("block_norm_q", layerIndex, net->qkRmsNormSize.nBytes, b);
             }

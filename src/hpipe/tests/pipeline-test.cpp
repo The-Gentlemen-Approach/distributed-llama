@@ -35,11 +35,11 @@ void printUsage() {
     std::cout << "  Root mode:   ./hpipe-pipeline-test root <worker1_host:port> <worker2_host:port> ...\n";
 }
 
-SimpleLlmHeader createDummyHeader() {
-    SimpleLlmHeader header;
-    std::memset(&header, 0, sizeof(SimpleLlmHeader));
+LlmHeader createDummyHeader() {
+    LlmHeader header;
+    std::memset(&header, 0, sizeof(LlmHeader));
     header.version = 100;
-    header.archType = SIMPLE_LLAMA;
+    header.archType = LLM_LLAMA;
     header.nLayers = 128;
     header.dim = 512;
     header.hiddenDim = 1024;
@@ -167,7 +167,7 @@ void testRootPipeline(int argc, char** argv) {
 
         // 설정 생성 및 배포
         std::vector<HPipeConfig> configs;
-        SimpleLlmHeader modelHeader = createDummyHeader();
+        LlmHeader modelHeader = createDummyHeader();
 
         for (int i = 0; i < nWorkers; i++) {
             HPipeConfig config;

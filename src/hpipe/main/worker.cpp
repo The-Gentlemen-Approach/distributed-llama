@@ -64,7 +64,7 @@ void runWorker(const WorkerArgs& args) {
         LOG("  First: " << network->getIsFirstWorker());
         LOG("  Last: " << network->getIsLastWorker());
 
-        SimpleLlmHeader header = config.model_header;
+        LlmHeader header = config.model_header;
 
         if (header.weightType == F_Q40 && header.syncType == F_32) {
             LOG("⚠️  Automatically switching buffer type to Q80 for Q40 model compatibility.");
@@ -73,12 +73,12 @@ void runWorker(const WorkerArgs& args) {
 
         // Build network for assigned segments
         const NnUint nBatches = 32;
-        SimpleLlmNet net = buildHpipeLlmNet(
+        LlmNet net = buildHpipeLlmNet(
             &header, nBatches,
             config.segment_range.start,
             config.segment_range.end
         );
-        std::unique_ptr<SimpleLlmNet, void(*)(SimpleLlmNet*)> netPtr(&net, releaseSimpleLlmNet);
+        std::unique_ptr<LlmNet, void(*)(LlmNet*)> netPtr(&net, releaseLlmNet);
 
         LOG("✓ Network built");
 

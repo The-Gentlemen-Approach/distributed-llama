@@ -70,15 +70,15 @@ typedef struct {
 // ==================================================================================
 
 /**
- * Initialize SimpleLlmNet with slices, pipes, and configuration.
+ * Initialize LlmNet with slices, pipes, and configuration.
  * Corresponds to simple-llm.cpp lines 167-246.
  *
- * @param net SimpleLlmNet structure to initialize
+ * @param net LlmNet structure to initialize
  * @param header Model header
  * @param nBatches Number of batches
  * @return LlmNetworkConfig with slices and configuration
  */
-LlmNetworkConfig initializeLlmNetwork(SimpleLlmNet *net, SimpleLlmHeader *header, NnUint nBatches);
+LlmNetworkConfig initializeLlmNetwork(LlmNet *net, LlmHeader *header, NnUint nBatches);
 
 // ==================================================================================
 // Buffer Allocation Function
@@ -90,8 +90,8 @@ LlmNetworkConfig initializeLlmNetwork(SimpleLlmNet *net, SimpleLlmHeader *header
  */
 LlmBufferIndices allocateLlmBuffers(
     NnNodeConfigBuilder *nodeBuilder,
-    SimpleLlmHeader *header,
-    SimpleLlmNet *net,
+    LlmHeader *header,
+    LlmNet *net,
     NnUint nBatches,
     NnUint nInvBufferColumns,
     const NnRopeSlice &ropeSlice,
@@ -118,7 +118,7 @@ void buildEmbeddingSegment(
 void buildAttentionSegment(
     NnNodeConfigBuilder *nodeBuilder,
     const LlmBufferIndices *buffers,
-    SimpleLlmNet *net,
+    LlmNet *net,
     NnUint layerIndex,
     NnUint kBufferIndex,
     NnUint vBufferIndex,
@@ -138,7 +138,7 @@ void buildAttentionSegment(
 void buildFFNSegment(
     NnNodeConfigBuilder *nodeBuilder,
     const LlmBufferIndices *buffers,
-    SimpleLlmNet *net,
+    LlmNet *net,
     NnUint layerIndex,
     NnUint zqPipeIndex,
     bool isLastSegmentForWorker = false,
@@ -151,7 +151,7 @@ void buildFFNSegment(
 void buildMoEFFNSegment(
     NnNodeConfigBuilder *nodeBuilder,
     const LlmBufferIndices *buffers,
-    SimpleLlmNet *net,
+    LlmNet *net,
     NnUint layerIndex,
     NnUint zqPipeIndex,
     bool isLastSegmentForWorker = false,
@@ -164,13 +164,13 @@ void buildMoEFFNSegment(
 void buildClassifierSegment(
     NnNodeConfigBuilder *nodeBuilder,
     const LlmBufferIndices *buffers,
-    SimpleLlmNet *net,
+    LlmNet *net,
     NnUint zqPipeIndex
 );
 
 /**
  * Releases the network resources.
  */
-void releaseSimpleLlmNet(SimpleLlmNet *net);
+void releaseLlmNet(LlmNet *net);
 
 #endif // LLM_BUILDER_HPP

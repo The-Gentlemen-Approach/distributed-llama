@@ -7,47 +7,47 @@
 // Enums & Structs
 // ==================================================================================
 
-enum SimpleLlmHeaderKey {
-    SIMPLE_VERSION = 0,
-    SIMPLE_ARCH_TYPE = 1,
-    SIMPLE_DIM = 2,
-    SIMPLE_HIDDEN_DIM = 3,
-    SIMPLE_N_LAYERS = 4,
-    SIMPLE_N_HEADS = 5,
-    SIMPLE_N_KV_HEADS = 6,
-    SIMPLE_N_EXPERTS = 7,
-    SIMPLE_N_ACTIVE_EXPERTS = 8,
-    SIMPLE_VOCAB_SIZE = 9,
-    SIMPLE_SEQ_LEN = 10,
-    SIMPLE_HIDDEN_ACT = 11,
-    SIMPLE_ROPE_THETA = 12,
-    SIMPLE_WEIGHT_FLOAT_TYPE = 13,
-    SIMPLE_ROPE_SCALING_FACTOR = 14,
-    SIMPLE_ROPE_SCALING_LOW_FREQ_FACTOR = 15,
-    SIMPLE_ROPE_SCALING_HIGH_FREQ_FACTORY = 16,
-    SIMPLE_ROPE_SCALING_ORIG_MAX_SEQ_LEN = 17,
-    SIMPLE_ROPE_TYPE = 18,
-    SIMPLE_HEAD_DIM = 19,
-    SIMPLE_NORM_EPSILON = 20,
-    SIMPLE_MOE_HIDDEN_DIM = 21,
+enum LlmHeaderKey {
+    LLM_VERSION = 0,
+    LLM_ARCH_TYPE = 1,
+    LLM_DIM = 2,
+    LLM_HIDDEN_DIM = 3,
+    LLM_N_LAYERS = 4,
+    LLM_N_HEADS = 5,
+    LLM_N_KV_HEADS = 6,
+    LLM_N_EXPERTS = 7,
+    LLM_N_ACTIVE_EXPERTS = 8,
+    LLM_VOCAB_SIZE = 9,
+    LLM_SEQ_LEN = 10,
+    LLM_HIDDEN_ACT = 11,
+    LLM_ROPE_THETA = 12,
+    LLM_WEIGHT_FLOAT_TYPE = 13,
+    LLM_ROPE_SCALING_FACTOR = 14,
+    LLM_ROPE_SCALING_LOW_FREQ_FACTOR = 15,
+    LLM_ROPE_SCALING_HIGH_FREQ_FACTORY = 16,
+    LLM_ROPE_SCALING_ORIG_MAX_SEQ_LEN = 17,
+    LLM_ROPE_TYPE = 18,
+    LLM_HEAD_DIM = 19,
+    LLM_NORM_EPSILON = 20,
+    LLM_MOE_HIDDEN_DIM = 21,
 };
 
-enum SimpleLlmHiddenAct {
-    SIMPLE_HIDDEN_ACT_GELU,
-    SIMPLE_HIDDEN_ACT_SILU,
+enum LlmHiddenAct {
+    LLM_HIDDEN_ACT_GELU,
+    LLM_HIDDEN_ACT_SILU,
 };
 
-enum SimpleLlmArchType {
-    SIMPLE_LLAMA = 0xABCD00,
-    SIMPLE_QWEN3 = 0xABCD01,
-    SIMPLE_QWEN3_MOE = 0xABCD02,
+enum LlmArchType {
+    LLM_LLAMA = 0xABCD00,
+    LLM_QWEN3 = 0xABCD01,
+    LLM_QWEN3_MOE = 0xABCD02,
 };
 
 typedef struct {
     NnSize headerSize;
     NnSize fileSize;
     int version;
-    SimpleLlmArchType archType;
+    LlmArchType archType;
 
     NnUint dim;
     NnUint nLayers;
@@ -62,7 +62,7 @@ typedef struct {
 
     NnUint hiddenDim;
     NnUint moeHiddenDim;
-    SimpleLlmHiddenAct hiddenAct;
+    LlmHiddenAct hiddenAct;
 
     NnUint qDim;
     NnUint kvDim;
@@ -80,10 +80,10 @@ typedef struct {
 
     NnFloatType weightType;
     NnFloatType syncType;
-} SimpleLlmHeader;
+} LlmHeader;
 
 typedef struct {
-    SimpleLlmHeader *header;
+    LlmHeader *header;
     NnNetConfig netConfig;
     NnNodeConfig nodeConfig;  // Single-node: no array needed
 
@@ -107,7 +107,7 @@ typedef struct {
     NnSize3D rmsNormSize;
     NnSize3D qkRmsNormSize;
     NnSize3D moeGateSize;
-} SimpleLlmNet;
+} LlmNet;
 
 // ==================================================================================
 // Functions
@@ -116,11 +116,11 @@ typedef struct {
 /**
  * Loads the model header.
  */
-SimpleLlmHeader loadSimpleLlmHeader(const char* path, const unsigned int maxSeqLen, NnFloatType syncType);
+LlmHeader loadLlmHeader(const char* path, const unsigned int maxSeqLen, NnFloatType syncType);
 
 /**
  * Prints the model header.
  */
-void printSimpleLlmHeader(SimpleLlmHeader *header);
+void printLlmHeader(LlmHeader *header);
 
 #endif

@@ -36,11 +36,11 @@ void printUsage() {
 }
 
 // 테스트용 더미 모델 헤더 생성
-SimpleLlmHeader createDummyHeader() {
-    SimpleLlmHeader header;
-    std::memset(&header, 0, sizeof(SimpleLlmHeader));
+LlmHeader createDummyHeader() {
+    LlmHeader header;
+    std::memset(&header, 0, sizeof(LlmHeader));
     header.version = 100;
-    header.archType = SIMPLE_LLAMA;
+    header.archType = LLM_LLAMA;
     header.nLayers = 128;
     header.dim = 512;
     header.hiddenDim = 1024;
@@ -106,7 +106,7 @@ void testRoot(int argc, char** argv) {
 
         // 설정 생성 및 배포
         std::vector<HPipeConfig> configs;
-        SimpleLlmHeader modelHeader = createDummyHeader();
+        LlmHeader modelHeader = createDummyHeader();
 
         for (int i = 0; i < nWorkers; i++) {
             HPipeConfig config;

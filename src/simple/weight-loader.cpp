@@ -44,7 +44,7 @@ public:
     }
 };
 
-void loadSimpleLlmNetWeight(const char *path, SimpleLlmNet *net, NnExecutor *executor) {
+void loadLlmNetWeight(const char *path, LlmNet *net, NnExecutor *executor) {
     MmapFile file;
     openMmapFile(&file, path, net->header->fileSize);
 
@@ -98,7 +98,7 @@ void loadSimpleLlmNetWeight(const char *path, SimpleLlmNet *net, NnExecutor *exe
             b += net->w3Slice.size.nBytes;
         }
 
-        if (net->header->archType == SIMPLE_QWEN3 || net->header->archType == SIMPLE_QWEN3_MOE) {
+        if (net->header->archType == LLM_QWEN3 || net->header->archType == LLM_QWEN3_MOE) {
             loader.loadAll("block_norm_q", layerIndex, net->qkRmsNormSize.nBytes, b);
             b += net->qkRmsNormSize.nBytes;
             loader.loadAll("block_norm_k", layerIndex, net->qkRmsNormSize.nBytes, b);
