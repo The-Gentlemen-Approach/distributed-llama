@@ -1,12 +1,14 @@
 /**
  * hpipe-root.cpp: H-Pipe Root Node Implementation
  *
- * Coordinates pipeline execution with chunking and scheduling.
+ * Coordinates pipeline execution.
+ * - Workload Distribution: Optimal Policy (Algorithm 1) applied.
+ * - Sequence Slicing: Fixed Chunk Size (Original) maintained.
  */
 
 #include "hpipe/network/root.hpp"
 #include "hpipe/core/types.hpp"
-#include "hpipe/core/policies.hpp"
+#include "hpipe/core/policies.hpp" // OptimalWorkloadPartitioningPolicy가 포함됨
 #include "hpipe/core/utils.hpp"
 #include "common/llm-types.hpp"
 #include "common/tokenizer.hpp"
@@ -27,7 +29,7 @@ struct RootArgs {
     float topp;
     int steps;
     unsigned long long seed;
-    int chunkSize;
+    int chunkSize; // [유지] Sequence Slicing은 기존 방식대로 고정 크기 사용
 
     static RootArgs parse(int argc, char** argv) {
         RootArgs args;
@@ -39,7 +41,7 @@ struct RootArgs {
         args.topp = 0.9f;
         args.steps = 256;
         args.seed = (unsigned long long)time(nullptr);
-        args.chunkSize = 128;
+        args.chunkSize = 128; // Default chunk size
 
         int i = 1;
         while (i < argc) {
@@ -88,6 +90,21 @@ void printUsage() {
     std::cout << "               --workers <addr1> <addr2> ... [options]\n";
 }
 
+// [추가] Workload Distribution을 위한 가상 디바이스 프로필 생성
+// 실제 환경에서는 네트워크 통신으로 받아오지만, 여기서는 시뮬레이션 값을 사용합니다.
+std::vector<DeviceProfile> getMockDeviceProfiles(int nWorkers) {
+    std::vector<DeviceProfile> profiles;
+    for (int i = 0; i < nWorkers; i++) {
+        // [시나리오] 짝수 워커는 고성능, 홀수 워커는 저성능으로 가정하여 부하 분산 효과 테스트
+        if (i % 2 == 0) {
+            profiles.push_back(DeviceProfile(300.0f, 80.0f)); // High-End
+        } else {
+            profiles.push_back(DeviceProfile(60.0f, 16.0f));  // Low-End
+        }
+    }
+    return profiles;
+}
+
 void runRoot(const RootArgs& args) {
     LOG("🔷 H-Pipe Root starting...");
 
@@ -116,16 +133,26 @@ void runRoot(const RootArgs& args) {
         tokenizer.encode(args.prompt, promptTokens, &nPromptTokens, false, false);
         LOG("✓ " << nPromptTokens << " tokens");
 
-        // Partition segments (one-by-one, not layer-based)
+        // ----------------------------------------------------------------
+        // [변경됨] Workload Partitioning: Uniform -> Optimal (Algorithm 1)
+        // ----------------------------------------------------------------
         int nWorkers = args.workerAddrs.size();
-        UniformSegmentPartitioningPolicy policy;
-        std::vector<SegmentRange> segmentRanges = policy.assignSegments(header, nWorkers);
+        
+        // 1. 디바이스 프로필 생성 (Algorithm 1 입력값)
+        auto profiles = getMockDeviceProfiles(nWorkers);
+
+        // 2. 최적 할당 정책 적용
+        LOG("🧠 Calculating Optimal Workload Distribution (Algorithm 1)...");
+        OptimalWorkloadPartitioningPolicy workloadPolicy(profiles);
+        std::vector<SegmentRange> segmentRanges = workloadPolicy.assignSegments(header, nWorkers);
 
         LOG("📊 Segment partitioning (nWorkers=" << nWorkers << "):");
         for (size_t i = 0; i < segmentRanges.size(); i++) {
+            int nSegs = segmentRanges[i].end - segmentRanges[i].start + 1;
             LOG("  Worker " << i << ": [" << segmentRanges[i].start
-                      << ", " << segmentRanges[i].end << "]");
+                      << ", " << segmentRanges[i].end << "] -> " << nSegs << " segments");
         }
+        // ----------------------------------------------------------------
 
         // Connect to workers
         LOG("🔗 Connecting to workers...");
@@ -138,7 +165,7 @@ void runRoot(const RootArgs& args) {
             size_t colonPos = args.workerAddrs[i].find(':');
             std::string host = args.workerAddrs[i].substr(0, colonPos);
             std::string port = args.workerAddrs[i].substr(colonPos + 1);
-            hosts[i] = new char[256];  // 고정 크기 버퍼 (hpipe-network.cpp와 일치)
+            hosts[i] = new char[256];
             std::memset(hosts[i], 0, 256);
             std::strncpy(hosts[i], host.c_str(), 255);
             ports[i] = std::stoi(port);
@@ -157,6 +184,8 @@ void runRoot(const RootArgs& args) {
 
             config.worker_id = i;
             config.total_workers = nWorkers;
+            
+            // [중요] 계산된 최적 범위(segmentRanges)를 전송
             config.segment_range = segmentRanges[i];
 
             if (i < nWorkers - 1) {
@@ -178,24 +207,26 @@ void runRoot(const RootArgs& args) {
         // Initialize sampler
         Sampler sampler(header.vocabSize, args.temperature, args.topp, args.seed);
 
-        // Prefill phase
+        // ----------------------------------------------------------------
+        // Prefill phase: [유지] Fixed Chunk Scheduler (Original Code)
+        // ----------------------------------------------------------------
         LOG("🚀 Prefill phase (" << nPromptTokens << " tokens):");
 
         tokenizer.resetDecoder();
 
+        // 기존 로직 유지: 사용자가 입력한 chunkSize 사용
         FixedChunkScheduler scheduler(args.chunkSize);
         std::vector<int> promptVec(promptTokens, promptTokens + nPromptTokens);
         std::vector<ChunkTask> chunks = scheduler.schedule(promptVec, header.seqLen);
 
-        LOG("  " << chunks.size() << " chunks");
+        LOG("  " << chunks.size() << " chunks (Fixed Size: " << args.chunkSize << ")");
 
         std::vector<int> generatedTokens;
         int currentPos = 0;
 
-        // Pipeline parallelization: Send all chunks first, then receive all results
-        // This allows multiple chunks to be processed simultaneously in the pipeline
-
-        // Phase 1: Send all chunks to first worker (non-blocking pipeline)
+        // Pipeline parallelization logic (Original)
+        
+        // Phase 1: Send all chunks to first worker
         std::vector<std::vector<float>> chunkTokenData(chunks.size());
         for (size_t chunkIdx = 0; chunkIdx < chunks.size(); chunkIdx++) {
             const auto& chunk = chunks[chunkIdx];
@@ -226,7 +257,6 @@ void runRoot(const RootArgs& args) {
             network->recvFromLastWorker(&resultHeader, logitsData.data(),
                                        header.vocabSize * chunk.tokens.size() * sizeof(float));
 
-            // Only generate token from the last chunk
             if (chunkIdx == chunks.size() - 1) {
                 float* lastLogits = logitsData.data() + header.vocabSize * (chunk.tokens.size() - 1);
 
@@ -242,7 +272,7 @@ void runRoot(const RootArgs& args) {
 
         LOG("\n\n🔄 Decoding phase:");
 
-        // Decoding phase
+        // Decoding phase (Original)
         tokenizer.resetDecoder();
         for (int step = 0; step < args.steps && currentPos < (int)header.seqLen; step++) {
             int lastToken = generatedTokens.back();
