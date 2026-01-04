@@ -32,7 +32,7 @@ private:
 
     // 세그먼트 타입에 따른 연산량(FLOPs) 추정 (Heuristic)
     // 실제 구현 시에는 프로파일링 된 데이터를 사용하는 것이 가장 정확합니다.
-    double estimateSegmentFlops(const SimpleLlmHeader& header, int segmentIdx) {
+    double estimateSegmentFlops(const LlmHeader& header, int segmentIdx) {
         // Segment 구조: 0(Emb) -> 1(Attn), 2(FFN) ... -> Last(Cls)
         long long hidden = header.hiddenDim;
         long long seq = header.seqLen; // 혹은 max_seq_len이나 평균치 사용
@@ -68,7 +68,7 @@ private:
     }
 
     // 통신 비용 계산 (이전 디바이스 -> 현재 디바이스 데이터 전송)
-    double calculateCommTime(const SimpleLlmHeader& header, int startSegmentIdx, const DeviceProfile& device) {
+    double calculateCommTime(const LlmHeader& header, int startSegmentIdx, const DeviceProfile& device) {
         // startSegmentIdx가 0이면(첫 시작) 통신 비용 없음 (입력 데이터는 제외 가정)
         if (startSegmentIdx == 0) return 0.0;
 
@@ -82,7 +82,7 @@ private:
     }
 
     // Eq(3) T(a, b, m): 디바이스 m에서 세그먼트 a부터 b까지 처리하는 총 시간
-    double calculateExecutionTime(const SimpleLlmHeader& header, int startSeg, int endSeg, int deviceIdx) {
+    double calculateExecutionTime(const LlmHeader& header, int startSeg, int endSeg, int deviceIdx) {
         double totalCompTime = 0.0;
         const auto& device = devices[deviceIdx];
 
@@ -105,7 +105,7 @@ public:
     OptimalWorkloadPartitioningPolicy(const std::vector<DeviceProfile>& device_list) 
         : devices(device_list) {}
 
-    std::vector<SegmentRange> assignSegments(const SimpleLlmHeader& header, int n_workers) override {
+    std::vector<SegmentRange> assignSegments(const LlmHeader& header, int n_workers) override {
         // 디바이스 정보가 부족하면 기본 프로필 추가
         if (devices.size() < n_workers) {
              devices.resize(n_workers, DeviceProfile(100.0f, 50.0f)); // Default fallback
