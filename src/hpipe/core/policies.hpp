@@ -70,7 +70,7 @@ private:
     // 통신 비용 계산 (이전 디바이스 -> 현재 디바이스 데이터 전송)
     double calculateCommTime(const LlmHeader& header, int startSegmentIdx, const DeviceProfile& device) {
         // startSegmentIdx가 0이면(첫 시작) 통신 비용 없음 (입력 데이터는 제외 가정)
-        if (startSegmentIdx == 0) return 0.0;
+        //if (startSegmentIdx == 0) return 0.0;
 
         // Activation Tensor Size: Batch(1) * SeqLen * HiddenDim * sizeof(float)
         // FP16이면 2byte, FP32면 4byte. 여기선 FP32(4byte) 가정
