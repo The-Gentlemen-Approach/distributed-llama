@@ -14,6 +14,9 @@
 #include "nn/nn-cpu.hpp"
 #include "nn/nn-executor.hpp"
 #include "nn/nn-quants.hpp"
+#ifdef DLLAMA_VULKAN
+#include "nn/nn-vulkan.hpp"
+#endif
 #include <iostream>
 #include <vector>
 #include <cstring>
@@ -23,17 +26,31 @@
 struct WorkerArgs {
     int port;
     int nThreads;
+    int gpuIndex;
+    int gpuSegmentFrom;
+    int gpuSegmentTo;
 
     static WorkerArgs parse(int argc, char** argv) {
         WorkerArgs args;
         args.port = 9999;
         args.nThreads = 4;
+        args.gpuIndex = -1;
+        args.gpuSegmentFrom = -1;
+        args.gpuSegmentTo = -1;
 
         for (int i = 1; i + 1 < argc; i += 2) {
             if (std::strcmp(argv[i], "--port") == 0) {
                 args.port = std::atoi(argv[i + 1]);
             } else if (std::strcmp(argv[i], "--nthreads") == 0) {
                 args.nThreads = std::atoi(argv[i + 1]);
+            } else if (std::strcmp(argv[i], "--gpu-index") == 0) {
+                args.gpuIndex = std::atoi(argv[i + 1]);
+            } else if (std::strcmp(argv[i], "--gpu-segments") == 0) {
+                char* separator = std::strstr(argv[i + 1], ":");
+                if (separator == NULL)
+                    throw std::runtime_error("GPU segments expected in the format <from>:<to>");
+                args.gpuSegmentFrom = std::atoi(argv[i + 1]);
+                args.gpuSegmentTo = std::atoi(separator + 1);
             }
         }
         return args;
@@ -42,7 +59,11 @@ struct WorkerArgs {
 
 void printUsage() {
     std::cout << "H-Pipe Worker:\n";
-    std::cout << "  ./hpipe-worker --port <port> [--nthreads <n>]\n";
+    std::cout << "  ./hpipe-worker --port <port> [options]\n";
+    std::cout << "\nOptions:\n";
+    std::cout << "  --nthreads <n>           Number of CPU threads (default: 4)\n";
+    std::cout << "  --gpu-index <n>          GPU device index (default: -1, CPU only)\n";
+    std::cout << "  --gpu-segments <from>:<to>  GPU segment range (e.g., 0:10)\n";
 }
 
 void runWorker(const WorkerArgs& args) {
@@ -86,10 +107,29 @@ void runWorker(const WorkerArgs& args) {
         NnNetExecution execution(args.nThreads, &net.netConfig);
         std::unique_ptr<NnNodeSynchronizer> synchronizer(new NnFakeNodeSynchronizer());
 
+        // Resolve devices (GPU + CPU)
         std::vector<NnExecutorDevice> devices;
-        devices.push_back(NnExecutorDevice(
-            new NnCpuDevice(&net.netConfig, &net.nodeConfig, &execution), -1, -1
-        ));
+
+        if (args.gpuIndex >= 0) {
+#ifdef DLLAMA_VULKAN
+            devices.push_back(NnExecutorDevice(
+                new NnVulkanDevice(args.gpuIndex, &net.netConfig, &net.nodeConfig, &execution),
+                args.gpuSegmentFrom,
+                args.gpuSegmentTo
+            ));
+            LOG("✓ GPU device added: index=" << args.gpuIndex
+                << ", segments=[" << args.gpuSegmentFrom << ":" << args.gpuSegmentTo << "]");
+#else
+            throw std::runtime_error("This build does not support GPU. Rebuild with DLLAMA_VULKAN=1");
+#endif
+        }
+
+        if (args.gpuIndex < 0 || (args.gpuSegmentFrom >= 0 && args.gpuSegmentTo >= 0)) {
+            devices.push_back(NnExecutorDevice(
+                new NnCpuDevice(&net.netConfig, &net.nodeConfig, &execution), -1, -1
+            ));
+            LOG("✓ CPU device added");
+        }
 
         NnExecutor executor(&net.netConfig, &net.nodeConfig, &devices, &execution,
                            synchronizer.get(), false);
