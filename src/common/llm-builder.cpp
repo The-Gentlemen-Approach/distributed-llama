@@ -1,5 +1,6 @@
 #include "common/llm-builder.hpp"
 #include "simple/utils.hpp"
+#include <stdexcept>
 
 // ==================================================================================
 // Network Initialization
