@@ -30,6 +30,7 @@ struct RootArgs {
     int steps;
     unsigned long long seed;
     int chunkSize; // [유지] Sequence Slicing은 기존 방식대로 고정 크기 사용
+    int maxSeqLen; // Maximum sequence length (0 = model default)
 
     static RootArgs parse(int argc, char** argv) {
         RootArgs args;
@@ -42,6 +43,7 @@ struct RootArgs {
         args.steps = 256;
         args.seed = (unsigned long long)time(nullptr);
         args.chunkSize = 128; // Default chunk size
+        args.maxSeqLen = 0; // Default to model limit
 
         int i = 1;
         while (i < argc) {
@@ -72,6 +74,8 @@ struct RootArgs {
                 args.seed = std::atoll(argv[++i]);
             } else if (std::strcmp(name, "--chunk-size") == 0 && i + 1 < argc) {
                 args.chunkSize = std::atoi(argv[++i]);
+            } else if ((std::strcmp(name, "--max-seq-len") == 0 || std::strcmp(name, "--seq-len") == 0) && i + 1 < argc) {
+                args.maxSeqLen = std::atoi(argv[++i]);
             }
             i++;
         }
@@ -88,6 +92,14 @@ void printUsage() {
     std::cout << "H-Pipe Root:\n";
     std::cout << "  ./hpipe-root --model <path> --tokenizer <path> --prompt <text>\n";
     std::cout << "               --workers <addr1> <addr2> ... [options]\n";
+    std::cout << "\nOptions:\n";
+    std::cout << "  --nthreads <n>      Number of threads (default: 4)\n";
+    std::cout << "  --max-seq-len <n>   Maximum sequence length (default: model limit)\n";
+    std::cout << "  --chunk-size <n>    Sequence chunk size (default: 128)\n";
+    std::cout << "  --steps <n>         Number of steps to generate (default: 256)\n";
+    std::cout << "  --temperature <f>   Sampling temperature (default: 0.8)\n";
+    std::cout << "  --topp <f>          Sampling top-p (default: 0.9)\n";
+    std::cout << "  --seed <n>          Random seed\n";
 }
 
 // [추가] Workload Distribution을 위한 가상 디바이스 프로필 생성
@@ -111,7 +123,7 @@ void runRoot(const RootArgs& args) {
     try {
         // Load model header
         LOG("📂 Loading model header...");
-        LlmHeader header = loadLlmHeader(args.modelPath, 0, F_32);
+        LlmHeader header = loadLlmHeader(args.modelPath, args.maxSeqLen, F_32);
 
         if (header.weightType == F_Q40 && header.syncType == F_32) {
             LOG("⚠️  Automatically switching buffer type to Q80 for Q40 model compatibility.");
