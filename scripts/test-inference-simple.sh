@@ -4,6 +4,9 @@
 
 set -e
 
+# Ensure we are running from the project root
+cd "$(dirname "$0")/.."
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'

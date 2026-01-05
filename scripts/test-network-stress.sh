@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Ensure we are running from the project root
+cd "$(dirname "$0")/.."
+
 # H-Pipe 네트워크 종합 테스트 (1~10 워커)
 
 echo "========================================="
@@ -16,7 +19,7 @@ for NUM_WORKERS in {1..10}; do
     echo "Testing with $NUM_WORKERS worker(s)..."
     echo "----------------------------------------"
 
-    ./test-hpipe-workers.sh $NUM_WORKERS > /dev/null 2>&1
+    ./scripts/test-network-basic.sh $NUM_WORKERS > /dev/null 2>&1
 
     if [ $? -eq 0 ]; then
         echo "✅ PASSED with $NUM_WORKERS worker(s)"
