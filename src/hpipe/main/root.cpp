@@ -3,12 +3,12 @@
  *
  * Coordinates pipeline execution.
  * - Workload Distribution: Optimal Policy (Algorithm 1) applied.
- * - Sequence Slicing: Fixed Chunk Size (Original) maintained.
+ * - Sequence Slicing: Optimal Policy (Algorithm 2) applied. [UPDATED]
  */
 
 #include "hpipe/network/root.hpp"
 #include "hpipe/core/types.hpp"
-#include "hpipe/core/policies.hpp" // OptimalWorkloadPartitioningPolicy가 포함됨
+#include "hpipe/core/policies.hpp" // OptimalWorkloadPartitioningPolicy & OptimalSequenceSlicingPolicy 포함
 #include "hpipe/core/utils.hpp"
 #include "common/llm-types.hpp"
 #include "common/tokenizer.hpp"
@@ -29,8 +29,8 @@ struct RootArgs {
     float topp;
     int steps;
     unsigned long long seed;
-    int chunkSize; // [유지] Sequence Slicing은 기존 방식대로 고정 크기 사용
-    int maxSeqLen; // Maximum sequence length (0 = model default)
+    int chunkSize; // [참고] Algorithm 2 사용 시, 이 값은 무시되거나 fallback으로 사용됨
+    int maxSeqLen; 
 
     static RootArgs parse(int argc, char** argv) {
         RootArgs args;
@@ -42,8 +42,8 @@ struct RootArgs {
         args.topp = 0.9f;
         args.steps = 256;
         args.seed = (unsigned long long)time(nullptr);
-        args.chunkSize = 128; // Default chunk size
-        args.maxSeqLen = 0; // Default to model limit
+        args.chunkSize = 128; 
+        args.maxSeqLen = 0; 
 
         int i = 1;
         while (i < argc) {
@@ -95,19 +95,18 @@ void printUsage() {
     std::cout << "\nOptions:\n";
     std::cout << "  --nthreads <n>      Number of threads (default: 4)\n";
     std::cout << "  --max-seq-len <n>   Maximum sequence length (default: model limit)\n";
-    std::cout << "  --chunk-size <n>    Sequence chunk size (default: 128)\n";
+    std::cout << "  --chunk-size <n>    Sequence chunk size (Ignored when using OptPolicy)\n";
     std::cout << "  --steps <n>         Number of steps to generate (default: 256)\n";
     std::cout << "  --temperature <f>   Sampling temperature (default: 0.8)\n";
     std::cout << "  --topp <f>          Sampling top-p (default: 0.9)\n";
     std::cout << "  --seed <n>          Random seed\n";
 }
 
-// [추가] Workload Distribution을 위한 가상 디바이스 프로필 생성
-// 실제 환경에서는 네트워크 통신으로 받아오지만, 여기서는 시뮬레이션 값을 사용합니다.
+// [유지] Workload Distribution을 위한 가상 디바이스 프로필 생성
 std::vector<DeviceProfile> getMockDeviceProfiles(int nWorkers) {
     std::vector<DeviceProfile> profiles;
     for (int i = 0; i < nWorkers; i++) {
-        // [시나리오] 짝수 워커는 고성능, 홀수 워커는 저성능으로 가정하여 부하 분산 효과 테스트
+        // [시나리오] 짝수 워커는 고성능, 홀수 워커는 저성능
         if (i % 2 == 0) {
             profiles.push_back(DeviceProfile(300.0f, 80.0f)); // High-End
         } else {
@@ -146,19 +145,19 @@ void runRoot(const RootArgs& args) {
         LOG("✓ " << nPromptTokens << " tokens");
 
         // ----------------------------------------------------------------
-        // [변경됨] Workload Partitioning: Uniform -> Optimal (Algorithm 1)
+        // [Stage 1] Workload Partitioning: Optimal (Algorithm 1)
         // ----------------------------------------------------------------
         int nWorkers = args.workerAddrs.size();
         
-        // 1. 디바이스 프로필 생성 (Algorithm 1 입력값)
+        // 1. 디바이스 프로필 생성
         auto profiles = getMockDeviceProfiles(nWorkers);
 
         // 2. 최적 할당 정책 적용
-        LOG("🧠 Calculating Optimal Workload Distribution (Algorithm 1)...");
+        LOG("🧠 Calculating Optimal Workload Partitioning (Algorithm 1)...");
         OptimalWorkloadPartitioningPolicy workloadPolicy(profiles);
         std::vector<SegmentRange> segmentRanges = workloadPolicy.assignSegments(header, nWorkers);
 
-        LOG("📊 Segment partitioning (nWorkers=" << nWorkers << "):");
+        LOG("📊 Segment Partitioning Result:");
         for (size_t i = 0; i < segmentRanges.size(); i++) {
             int nSegs = segmentRanges[i].end - segmentRanges[i].start + 1;
             LOG("  Worker " << i << ": [" << segmentRanges[i].start
@@ -197,7 +196,7 @@ void runRoot(const RootArgs& args) {
             config.worker_id = i;
             config.total_workers = nWorkers;
             
-            // [중요] 계산된 최적 범위(segmentRanges)를 전송
+            // 할당된 레이어 범위 전송
             config.segment_range = segmentRanges[i];
 
             if (i < nWorkers - 1) {
@@ -220,23 +219,33 @@ void runRoot(const RootArgs& args) {
         Sampler sampler(header.vocabSize, args.temperature, args.topp, args.seed);
 
         // ----------------------------------------------------------------
-        // Prefill phase: [유지] Fixed Chunk Scheduler (Original Code)
+        // [Stage 2] Prefill phase: Optimal Sequence Slicing (Algorithm 2)
         // ----------------------------------------------------------------
         LOG("🚀 Prefill phase (" << nPromptTokens << " tokens):");
 
         tokenizer.resetDecoder();
 
-        // 기존 로직 유지: 사용자가 입력한 chunkSize 사용
-        FixedChunkScheduler scheduler(args.chunkSize);
+        // [변경] 기존 FixedChunkScheduler 대신 OptimalSequenceSlicingPolicy 사용
+        // Algorithm 2를 위해 Header(모델정보), Profiles(디바이스정보), Ranges(할당정보) 모두 필요
+        LOG("🔪 Calculating Optimal Sequence Slicing (Algorithm 2)...");
+        
+        OptimalSequenceSlicingPolicy slicingPolicy(header, profiles, segmentRanges);
         std::vector<int> promptVec(promptTokens, promptTokens + nPromptTokens);
-        std::vector<ChunkTask> chunks = scheduler.schedule(promptVec, header.seqLen);
+        
+        // 동적 슬라이싱 수행
+        std::vector<ChunkTask> chunks = slicingPolicy.schedule(promptVec, header.seqLen);
 
-        LOG("  " << chunks.size() << " chunks (Fixed Size: " << args.chunkSize << ")");
+        // 결과 출력 (Algorithm 2의 결과인 가변 크기 확인용)
+        LOG("  -> Generated " << chunks.size() << " dynamic chunks:");
+        for(const auto& chunk : chunks) {
+             LOG("     [SeqID " << chunk.seq_id << "] Size: " << chunk.tokens.size() 
+                 << " (Start: " << chunk.start_pos << ")");
+        }
 
         std::vector<int> generatedTokens;
         int currentPos = 0;
 
-        // Pipeline parallelization logic (Original)
+        // Pipeline execution (Logic remains same, data distribution changes)
         
         // Phase 1: Send all chunks to first worker
         std::vector<std::vector<float>> chunkTokenData(chunks.size());
@@ -284,7 +293,7 @@ void runRoot(const RootArgs& args) {
 
         LOG("\n\n🔄 Decoding phase:");
 
-        // Decoding phase (Original)
+        // Decoding phase (Token-by-token generation remains same)
         tokenizer.resetDecoder();
         for (int step = 0; step < args.steps && currentPos < (int)header.seqLen; step++) {
             int lastToken = generatedTokens.back();
