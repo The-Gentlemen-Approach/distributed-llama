@@ -1,0 +1,23 @@
+{
+    "workers": [
+        {
+            "name": "dllama-worker-1",
+            "gpu_type_id": "NVIDIA RTX A4000",
+            "template_id": "TEMPLATE_ID",
+            "gpu_index": -1
+        },
+        {
+            "name": "dllama-worker-2",
+            "gpu_type_id": "NVIDIA RTX A4000",
+            "template_id": "TEMPLATE_ID",
+            "gpu_index": -1
+        }
+    ],
+    "cluster_settings": {
+        "model_path": "models/llama3_2_1b_instruct_q40/dllama_model_llama3_2_1b_instruct_q40.m",
+        "tokenizer_path": "models/llama3_2_1b_instruct_q40/dllama_tokenizer_llama3_2_1b_instruct_q40.t",
+        "nthreads": 1,
+        "steps": 50,
+        "prompt": "The future of AI is distributed because"
+    }
+}
