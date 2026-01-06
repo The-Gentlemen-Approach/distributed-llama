@@ -1,0 +1,22 @@
+# Ignore git directory
+.git
+.gitignore
+
+# Ignore build artifacts
+*.o
+*.dSYM
+hpipe-root
+hpipe-worker
+simple-dllama
+*_test
+
+# Ignore large model files (Prepare them inside Docker or mount via volume)
+models/
+*.m
+*.t
+
+# Ignore local configs/logs
+*.log
+.DS_Store
+.vscode
+*.md

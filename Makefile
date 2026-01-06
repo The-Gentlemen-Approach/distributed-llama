@@ -1,8 +1,13 @@
 CXX = g++
 CXXFLAGS = -std=c++11 -Werror -Wformat -Werror=format-security -I src
 
+UNAME_M := $(shell uname -m)
 ifndef TERMUX_VERSION
-	CXXFLAGS += -march=native -mtune=native
+	ifeq ($(UNAME_M),x86_64)
+		CXXFLAGS += -mavx -mavx2 -mfma -mf16c
+	else
+		CXXFLAGS += -march=native -mtune=native
+	endif
 endif
 
 ifdef DEBUG
