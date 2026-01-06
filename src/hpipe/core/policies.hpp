@@ -284,4 +284,184 @@ public:
     }
 };
 
+
+// [NEW] [Algorithm 2 Implementation] 최적 시퀀스 슬라이싱 정책 (Strict Mode)
+// 논문의 Algorithm 2 변수명(G, L, S)과 로직을 그대로 구현
+class OptimalSequenceSlicingPolicy : public IPipelineScheduler {
+private:
+    LlmHeader header;
+    std::vector<DeviceProfile> devices;
+    std::vector<SegmentRange> assignedRanges; 
+
+    // 단일 슬라이스 비용 계산 (Eq 1 기반)
+    // sliceSize: 현재 자르는 크기 (s_step)
+    // historySize: 이전에 처리된 누적 크기 (s_cur - s_step)
+    double calculateCost(int sliceSize, int historySize) {
+        double maxStageLatency = 0.0;
+        
+        for (size_t m = 0; m < devices.size(); ++m) {
+            const auto& device = devices[m];
+            const auto& range = assignedRanges[m];
+            double totalCompTime = 0.0;
+            
+            for (int k = range.start; k <= range.end; ++k) {
+                double flops = 0.0;
+                long long h = header.hiddenDim;
+                
+                if (k == 0 || k == 2 * header.nLayers + 1) {
+                    flops = (double)header.vocabSize * h * sliceSize; 
+                } 
+                else if (k % 2 != 0) { // Attention
+                    // Cost depends on current slice AND history
+                    double attnOps = 2.0 * sliceSize * (sliceSize + historySize) * h;
+                    double projOps = 4.0 * sliceSize * h * h;
+                    flops = attnOps + projOps;
+                } 
+                else { // FFN
+                    long long inter = header.moeHiddenDim > 0 ? header.moeHiddenDim : h * 4;
+                    flops = 3.0 * h * inter * sliceSize; 
+                }
+                totalCompTime += (flops / (device.tflops * 1e12));
+            }
+            double dataSize = (double)sliceSize * header.hiddenDim * sizeof(float);
+            double commTime = dataSize / (device.bandwidth * 1e9);
+
+            double stageLatency = totalCompTime + commTime;
+            if (stageLatency > maxStageLatency) {
+                maxStageLatency = stageLatency;
+            }
+        }
+        return maxStageLatency;
+    }
+
+public:
+    OptimalSequenceSlicingPolicy(const LlmHeader& h, 
+                                 const std::vector<DeviceProfile>& devs,
+                                 const std::vector<SegmentRange>& ranges) 
+        : header(h), devices(devs), assignedRanges(ranges) {}
+
+    std::vector<ChunkTask> schedule(const std::vector<int>& prompt_tokens, int max_seq_len) override {
+        int N = prompt_tokens.size(); // Total Sequence Length
+        int M = devices.size();       // Number of Workers
+
+        // ---------------------------------------------------------
+        // Pre-calculation: Construct Matrix G (Algorithm 2 requires G as input)
+        // G[i][j] : Cost of slice ending at i, starting after j.
+        // i corresponds to s_cur, j corresponds to (s_cur - s_step) aka history
+        // ---------------------------------------------------------
+        std::vector<std::vector<double>> G(N + 1, std::vector<double>(N + 1, 0.0));
+        std::set<double> T_set; // To collect all unique latencies for Line 1
+
+        for (int s_cur = 1; s_cur <= N; ++s_cur) {
+            for (int prev = 0; prev < s_cur; ++prev) {
+                int s_step = s_cur - prev;
+                // Cost for slice of size s_step with history size 'prev'
+                double cost = calculateCost(s_step, prev);
+                G[s_cur][prev] = cost; 
+                T_set.insert(cost);
+            }
+        }
+
+        // 1: T <- all possible latency in G
+        std::vector<double> T(T_set.begin(), T_set.end());
+
+        // 2: T* <- infinity, S* <- None
+        double T_star = std::numeric_limits<double>::infinity();
+        std::vector<int> S_star;
+
+        // 3: for t_max in T do
+        for (double t_max : T) {
+            
+            // DP Tables
+            // L: Array to record latency
+            // S: Array to trace the sequence slicing
+            std::vector<double> L(N + 1, std::numeric_limits<double>::infinity());
+            std::vector<int> S_trace(N + 1, 0);
+
+            // Base case: 0 latency for 0 tokens
+            L[0] = 0.0; 
+
+            // 4: for s_cur from 1 to N do
+            for (int s_cur = 1; s_cur <= N; ++s_cur) {
+                
+                // 5: L[s_cur] <- infinity (Already init)
+
+                // 6: for s_step from 1 to s_cur do
+                for (int s_step = 1; s_step <= s_cur; ++s_step) {
+                    
+                    // 7: l_step <- G[s_cur][s_cur - s_step]
+                    double l_step = G[s_cur][s_cur - s_step];
+
+                    // 8: l_total <- L[s_cur - s_step] + l_step
+                    double prev_latency = L[s_cur - s_step];
+                    
+                    if (prev_latency == std::numeric_limits<double>::infinity()) continue;
+
+                    double l_total = prev_latency + l_step;
+
+                    // 9: if l_step <= t_max && l_total < L[s_cur] then
+                    // Note: 논문 슈도코드에는 "s_cur <= t_max"라고 되어 있으나(Line 9), 
+                    // s_cur는 인덱스(길이)고 t_max는 시간(double)이므로 명백한 오타 혹은 문맥상
+                    // "현재 슬라이스 비용(l_step) <= t_max"를 의미함. (Eq 5의 제약조건과 일치)
+                    if (l_step <= t_max && l_total < L[s_cur]) {
+                        
+                        // 10: L[s_cur] <- l_total
+                        L[s_cur] = l_total;
+                        
+                        // 11: S[s_cur] <- s_step
+                        S_trace[s_cur] = s_step;
+                    }
+                }
+            }
+
+            // Valid path found to the end?
+            if (L[N] != std::numeric_limits<double>::infinity()) {
+                
+                // 12-15: Reconstruction (Inside strict loop, effectively)
+                // Derive the sequence slicing S
+                std::vector<int> S_temp;
+                int i = N;
+                while (i > 0) {
+                    S_temp.push_back(S_trace[i]);
+                    i = i - S_trace[i];
+                }
+                std::reverse(S_temp.begin(), S_temp.end());
+
+                // 16: T = (M - 1) * t_max + L[N]
+                double T_val = (double)(M - 1) * t_max + L[N];
+
+                // 17: if T < T* then
+                if (T_val < T_star) {
+                    // 18: T* <- T, S* <- S
+                    T_star = T_val;
+                    S_star = S_temp;
+                }
+            }
+        }
+
+        // Final Task Generation using S*
+        std::vector<ChunkTask> tasks;
+        int current_pos = 0;
+        int seq_id = 0;
+
+        if (S_star.empty()) {
+            // Fallback (e.g., single chunk) if optimization fails unexpectedly
+            S_star.push_back(N); 
+        }
+
+        for (int size : S_star) {
+            ChunkTask task;
+            task.seq_id = seq_id++;
+            task.start_pos = current_pos;
+            // Vector slicing
+            task.tokens = std::vector<int>(prompt_tokens.begin() + current_pos, 
+                                         prompt_tokens.begin() + current_pos + size);
+            tasks.push_back(task);
+            current_pos += size;
+        }
+
+        return tasks;
+    }
+};
+
 #endif // HPIPE_POLICY_HPP
