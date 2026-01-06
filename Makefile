@@ -45,7 +45,7 @@ endif
 .PHONY: clean hpipe-root hpipe-worker simple-dllama
 
 clean:
-	$(DELETE_CMD) *.o hpipe-root hpipe-worker simple-dllama *-test *.exe
+	$(DELETE_CMD) *.o hpipe-root hpipe-worker simple-dllama *-test nn-cpu-gpu-comparison-test *.exe
 
 # ==========================================
 # NN Core
@@ -83,6 +83,8 @@ DEPS += $(VULKAN_SHADER_BINS)
 %.spv: %.comp
 	$(CGLSLC) -c $< -o $@ --target-env=vulkan1.2
 nn-vulkan-test: src/nn/nn-vulkan-test.cpp nn-quants.o nn-core.o nn-executor.o nn-vulkan.o ${DEPS}
+	$(CXX) $(CXXFLAGS) $(filter-out %.spv, $^) -o $@ $(LIBS)
+nn-cpu-gpu-comparison-test: src/nn/nn-cpu-gpu-comparison-test.cpp nn-quants.o nn-core.o nn-executor.o llamafile-sgemm.o nn-cpu-ops.o nn-cpu.o nn-vulkan.o ${DEPS}
 	$(CXX) $(CXXFLAGS) $(filter-out %.spv, $^) -o $@ $(LIBS)
 endif
 
