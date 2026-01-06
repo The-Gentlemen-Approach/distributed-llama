@@ -3,12 +3,12 @@
  *
  * Coordinates pipeline execution.
  * - Workload Distribution: Optimal Policy (Algorithm 1) applied.
- * - Sequence Slicing: Optimal Policy (Algorithm 2) applied. [UPDATED]
+ * - Sequence Slicing: Optimal Policy (Algorithm 2 + Latency Awareness) applied.
  */
 
 #include "hpipe/network/root.hpp"
 #include "hpipe/core/types.hpp"
-#include "hpipe/core/policies.hpp" // OptimalWorkloadPartitioningPolicy & OptimalSequenceSlicingPolicy 포함
+#include "hpipe/core/policies.hpp" // OptimalWorkloadPartitioningPolicy & OptimalSequenceSlicingPolicy
 #include "hpipe/core/utils.hpp"
 #include "common/llm-types.hpp"
 #include "common/tokenizer.hpp"
@@ -29,7 +29,7 @@ struct RootArgs {
     float topp;
     int steps;
     unsigned long long seed;
-    int chunkSize; // [참고] Algorithm 2 사용 시, 이 값은 무시되거나 fallback으로 사용됨
+    int chunkSize; 
     int maxSeqLen; 
 
     static RootArgs parse(int argc, char** argv) {
@@ -102,17 +102,26 @@ void printUsage() {
     std::cout << "  --seed <n>          Random seed\n";
 }
 
-// [유지] Workload Distribution을 위한 가상 디바이스 프로필 생성
+// [수정됨] Workload Distribution을 위한 가상 디바이스 프로필 생성
+// Latency(고정 오버헤드) 값을 3번째 인자로 추가하여 전달합니다.
 std::vector<DeviceProfile> getMockDeviceProfiles(int nWorkers) {
     std::vector<DeviceProfile> profiles;
-    for (int i = 0; i < nWorkers; i++) {
-        // [시나리오] 짝수 워커는 고성능, 홀수 워커는 저성능
-        if (i % 2 == 0) {
-            profiles.push_back(DeviceProfile(300.0f, 80.0f)); // High-End
-        } else {
-            profiles.push_back(DeviceProfile(60.0f, 16.0f));  // Low-End
-        }
+    
+    // 일반적인 이더넷 환경을 가정하여 200us (0.0002초)의 고정 오버헤드 설정
+    // 이 값이 클수록 알고리즘은 더 큰 청크로 묶으려고 합니다.
+    float latency = 2e-4f; 
+
+    // 기존 설정값에 latency 인자 추가 (TFLOPS, Bandwidth, Latency)
+    // nWorkers 수만큼 생성하도록 반복문으로 처리하거나, 필요한 만큼 push_back
+    for(int i=0; i<nWorkers; ++i) {
+        if (i == 0) profiles.push_back(DeviceProfile(100.0f, 100.0f, latency));
+        else if (i == 1) profiles.push_back(DeviceProfile(100.0f, 100.0f, latency));
+        else if (i == 2) profiles.push_back(DeviceProfile(100.0f, 100.0f, latency));
+        else if (i == 3) profiles.push_back(DeviceProfile(100.0f, 10.0f, latency));
+        else if (i == 4) profiles.push_back(DeviceProfile(400.0f, 10.0f, latency));
+        else profiles.push_back(DeviceProfile(400.0f, 10000.0f, latency)); // Fallback
     }
+
     return profiles;
 }
 
@@ -122,12 +131,7 @@ void runRoot(const RootArgs& args) {
     try {
         // Load model header
         LOG("📂 Loading model header...");
-        LlmHeader header = loadLlmHeader(args.modelPath, args.maxSeqLen, F_32);
-
-        if (header.weightType == F_Q40 && header.syncType == F_32) {
-            LOG("⚠️  Automatically switching buffer type to Q80 for Q40 model compatibility.");
-            header.syncType = F_Q80;
-        }
+        LlmHeader header = loadLlmHeader(args.modelPath, args.maxSeqLen, F_Q80);
 
         LOG("✓ Model: " << header.nLayers << " layers, dim=" << header.dim);
 
@@ -149,7 +153,7 @@ void runRoot(const RootArgs& args) {
         // ----------------------------------------------------------------
         int nWorkers = args.workerAddrs.size();
         
-        // 1. 디바이스 프로필 생성
+        // 1. 디바이스 프로필 생성 (Latency 포함됨)
         auto profiles = getMockDeviceProfiles(nWorkers);
 
         // 2. 최적 할당 정책 적용
@@ -225,8 +229,7 @@ void runRoot(const RootArgs& args) {
 
         tokenizer.resetDecoder();
 
-        // [변경] 기존 FixedChunkScheduler 대신 OptimalSequenceSlicingPolicy 사용
-        // Algorithm 2를 위해 Header(모델정보), Profiles(디바이스정보), Ranges(할당정보) 모두 필요
+        // [변경] OptimalSequenceSlicingPolicy 사용 (Latency 적용됨)
         LOG("🔪 Calculating Optimal Sequence Slicing (Algorithm 2)...");
         
         OptimalSequenceSlicingPolicy slicingPolicy(header, profiles, segmentRanges);
