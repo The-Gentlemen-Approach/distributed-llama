@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y \
     libvulkan1 \
     vulkan-tools \
     libvulkan-dev \
+    openssh-server \
     && rm -rf /var/lib/apt/lists/*
 
 # 4. Install Vulkan SDK (for glslc)

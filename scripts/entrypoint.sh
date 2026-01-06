@@ -1,6 +1,47 @@
 #!/bin/bash
 set -e
 
+# 0. SSH 설정 강제 변경 (sshd_config 해킹)
+if [ -f /etc/ssh/sshd_config ]; then
+    echo "🔓 Unlocking SSH Root Login..."
+    
+    # 주석(#)이 있든 없든 'PermitRootLogin yes'로 무조건 치환
+    sed -i 's/^#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
+    sed -i 's/^PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
+    
+    # 키 인증 허용
+    sed -i 's/^#PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+    
+    # (옵션) 비밀번호 인증도 일단 켜둠 (비상용)
+    sed -i 's/^#PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+else
+    echo "⚠️ Error: /etc/ssh/sshd_config not found. Is openssh-server installed?"
+fi
+
+# 0. RunPod이 던져준 SSH 키를 등록하는 로직
+if [ -n "$PUBLIC_KEY" ]; then
+    echo "🔑 Setting up SSH access..."
+    mkdir -p /root/.ssh
+    echo "$PUBLIC_KEY" >> /root/.ssh/authorized_keys
+    chmod 700 /root/.ssh
+    chmod 600 /root/.ssh/authorized_keys
+    
+    # SSH 서비스가 설치되어 있다면 재시작 (혹시 몰라서)
+    if service ssh status > /dev/null 2>&1; then
+        service ssh start
+    fi
+else
+    echo "⚠️ Warning: No PUBLIC_KEY environment variable found."
+fi
+
+# 0. ssh 서비스 시작
+echo "🔄 Starting SSH Service..."
+if service ssh status > /dev/null 2>&1; then
+    service ssh restart
+else
+    service ssh start
+fi
+
 echo "🚀 Starting Distributed Llama Container..."
 
 # 1. Prepare Persistent Volume
