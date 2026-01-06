@@ -17,7 +17,7 @@ struct BatchInfo {
 };
 
 layout(binding = 0) readonly buffer inputBuffer { float x[]; };
-layout(binding = 1) writeonly buffer outputBuffer { float y[]; };
+layout(binding = 1) buffer outputBuffer { float y[]; };  // read-write for in-place
 layout(binding = 2) readonly uniform batchInfosBuffer { BatchInfo infos[N_Z * N_BATCHES]; };
 
 shared float temp[N_THREADS];
@@ -33,6 +33,7 @@ void main() {
     const uint xOffset = info.inputOffset;
     const uint yOffset = info.outputOffset;
 
+    // Step 1: Find max value
     float m = -1e10f;
     for (uint i = threadIndex; i < size; i += N_THREADS) {
         m = max(m, x[xOffset + i]);
@@ -41,6 +42,7 @@ void main() {
     temp[threadIndex] = m;
     barrier();
 
+    // Parallel reduction to find global max
     [[unroll]] for (uint i = N_THREADS / 2; i > 0; i >>= 1) {
         if (threadIndex < i)
             temp[threadIndex] = max(temp[threadIndex], temp[threadIndex + i]);
@@ -50,7 +52,35 @@ void main() {
     barrier();
 
     const float maxVal = temp[0];
+
+    // Step 2: Calculate exp(x - max) and accumulate sum
+    // Write to output buffer, read from input buffer
+    float localSum = 0.0f;
     for (uint i = threadIndex; i < size; i += N_THREADS) {
-        y[yOffset + i] = exp(x[xOffset + i] - maxVal);
+        float expVal = exp(x[xOffset + i] - maxVal);
+        y[yOffset + i] = expVal;
+        localSum += expVal;
+    }
+
+    temp[threadIndex] = localSum;
+    barrier();
+
+    // Parallel reduction to calculate total sum
+    [[unroll]] for (uint i = N_THREADS / 2; i > 0; i >>= 1) {
+        if (threadIndex < i)
+            temp[threadIndex] = temp[threadIndex] + temp[threadIndex + i];
+        barrier();
+    }
+
+    barrier();
+
+    float totalSum = temp[0];
+    if (totalSum == 0.0f)
+        totalSum = 0.000001f;  // Prevent division by zero
+
+    // Step 3: Normalize by dividing by sum (in-place in output buffer)
+    const float inv_sum = 1.0f / totalSum;
+    for (uint i = threadIndex; i < size; i += N_THREADS) {
+        y[yOffset + i] *= inv_sum;
     }
 }
