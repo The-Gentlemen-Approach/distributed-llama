@@ -20,6 +20,10 @@
 #include "simple/network-builder.hpp"
 #include "simple/weight-loader.hpp"
 
+#ifdef DLLAMA_VULKAN
+#include "nn/nn-vulkan.hpp"
+#endif
+
 // ==================================================================================
 // 0. Simplified AppCliArgs (Copied & Simplified from src/app.hpp)
 // ==================================================================================
@@ -253,22 +257,48 @@ static void inference(SimpleInferenceContext *context) {
 
 static std::vector<NnExecutorDevice> resolveDevices(AppCliArgs *args, NnNetConfig *netConfig, NnNodeConfig *nodeConfig, NnNetExecution *netExecution) {
     std::vector<NnExecutorDevice> devices;
-    // GPU Logic removed/simplifed: Always CPU for simplicity, or can be added back if NnCpuDevice depends on it?
-    // NnCpuDevice is in nn-cpu.hpp.
-    // GPU support requires DLLAMA_VULKAN macro and nn-vulkan.hpp. 
-    // Keeping it simple: CPU only.
+
+#ifdef DLLAMA_VULKAN
+    // GPU support enabled
+    if (args->gpuIndex >= 0) {
+        // GPU device
+        printf("🎮 Using GPU device (index: %d)\n", args->gpuIndex);
+        NnDevice *gpuDevice = new NnVulkanDevice(args->gpuIndex, netConfig, nodeConfig, netExecution);
+
+        if (args->gpuSegmentFrom >= 0 && args->gpuSegmentTo >= 0) {
+            // GPU handles specific segments
+            printf("   GPU segments: %d to %d\n", args->gpuSegmentFrom, args->gpuSegmentTo);
+            devices.push_back(NnExecutorDevice(gpuDevice, args->gpuSegmentFrom, args->gpuSegmentTo));
+
+            // CPU handles remaining segments
+            NnDevice *cpuDevice = new NnCpuDevice(netConfig, nodeConfig, netExecution);
+            devices.push_back(NnExecutorDevice(cpuDevice, -1, -1));
+        } else {
+            // GPU handles all segments
+            printf("   GPU handles all segments\n");
+            devices.push_back(NnExecutorDevice(gpuDevice, -1, -1));
+        }
+    } else {
+        // CPU only
+        printf("💻 Using CPU device\n");
+        devices.push_back(NnExecutorDevice(new NnCpuDevice(netConfig, nodeConfig, netExecution), -1, -1));
+    }
+#else
+    // Vulkan not compiled, CPU only
+    if (args->gpuIndex >= 0) {
+        printf("⚠️  Warning: GPU requested but Vulkan support not compiled. Using CPU instead.\n");
+        printf("   Recompile with DLLAMA_VULKAN=1 to enable GPU support.\n");
+    }
+    printf("💻 Using CPU device\n");
     devices.push_back(NnExecutorDevice(new NnCpuDevice(netConfig, nodeConfig, netExecution), -1, -1));
+#endif
+
     return devices;
 }
 
 void runSimpleApp(AppCliArgs *args) {
     // 1. Load Header
     LlmHeader header = loadLlmHeader(args->modelPath, args->maxSeqLen, args->syncType);
-
-    if (header.weightType == F_Q40 && header.syncType == F_32) {
-        printf("⚠️ Automatically switching buffer type to Q80 for Q40 model compatibility.\n");
-        header.syncType = F_Q80;
-    }
 
     // 2. Tokenizer
     Tokenizer tokenizer(args->tokenizerPath);

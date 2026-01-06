@@ -66,26 +66,48 @@ void main() {
     const uint dim0 = isQ == 1 ? slice.qDim0 : slice.kvDim0;
 
     if (ropeType == 0 || ropeType == 2 /* Llama */) {
+        // Llama 3.2 등은 HeadDim 단위로 RoPE가 반복 적용되어야 함
+        const uint headDim = slice.headDim; // 구조체에 headDim이 있다고 가정 (Falcon 분기 참고)
+        const uint headDimHalf = headDim / 2;
+        const uint nHeads = dim0 / headDim; // 전체 차원을 헤드 차원으로 나누어 헤드 수 계산
+
         uint posOffset = position * slice.sliceDim;
         if (isQ == 1) {
             posOffset += slice.qShift;
         }
-        const uint dim0Half = dim0 / 2;
 
-        for (uint i = threadIndex; i < dim0Half; i += N_THREADS) {
-            const uint j = i * 2;
-            const uint c = posOffset + j;
+        // [수정] 각 Head에 대해 반복
+        for (uint h = 0; h < nHeads; h++) {
+            const uint offsetHead = h * headDim; // 현재 헤드의 입력 버퍼 시작 오프셋
 
-            float fcr = ropeCache[c];
-            float fci = ropeCache[c + 1];
-            float v0 = x[xOffset + j];
-            float v1 = x[xOffset + j + 1];
+            // 각 헤드 내부의 차원(0 ~ headDim)에 대해 병렬 처리
+            for (uint i = threadIndex; i < headDimHalf; i += N_THREADS) {
+                const uint j = i * 2;
+                
+                // Cache 인덱스 (c): 헤드가 바뀌어도 동일한 posOffset + j를 사용 (RoPE 공유)
+                const uint c = posOffset + j; 
 
-            const float x0 = fma(-v1, fci, v0 * fcr);
-            const float x1 = fma( v0, fci, v1 * fcr);
+                // Input/Output 인덱스: 헤드 오프셋(offsetHead)을 더해줌
+                const uint inIdx = xOffset + offsetHead + j;
+                const uint outIdx = yOffset + offsetHead + j;
 
-            y[yOffset + j] = x0;
-            y[yOffset + j + 1] = x1;
+                float fcr = ropeCache[c];
+                float fci = ropeCache[c + 1];
+                
+                float v0 = x[inIdx];
+                float v1 = x[inIdx + 1];
+
+                // Llama 식: [v0, v1] * [cos, -sin; sin, cos] (fma 사용)
+                // C++ 구현과 일치하는지 부호 확인 필요 (보통 Llama는 짝수/홀수 인덱스 교차 방식이 다를 수 있음)
+                // 현재 쉐이더 로직:
+                // x0 = -v1 * sin + v0 * cos
+                // x1 =  v0 * sin + v1 * cos
+                const float x0 = fma(-v1, fci, v0 * fcr);
+                const float x1 = fma( v0, fci, v1 * fcr);
+
+                y[outIdx] = x0;
+                y[outIdx + 1] = x1;
+            }
         }
     } else if (ropeType == 1 /* Falcon */) {
         const uint posOffset = position * slice.headDim;

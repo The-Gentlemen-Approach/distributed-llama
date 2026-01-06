@@ -51,6 +51,8 @@ LlmNetworkConfig initializeLlmNetwork(LlmNet *n, LlmHeader *h, NnUint nBatches) 
     n->logitsPipeIndex = netBuilder.addPipe("LG", size2D(F_32, nBatches, h->vocabSize));
     config.zqPipeIndex = netBuilder.addPipe("ZQ", size2D(h->syncType, nBatches, h->dim));
 
+    netBuilder.addPreSync(n->positionPipeIndex);
+
     n->header = h;
     n->netConfig = netBuilder.build();
 
@@ -165,6 +167,7 @@ void buildEmbeddingSegment(
         pointerBatchConfig(SRC_PIPE, xPipeIndex),
         tokenEmbeddingSize,
         NnEmbeddingOpConfig{});
+    start.addSync(xPipeIndex, SYNC_WITH_ROOT);
     nodeBuilder->addSegment(start.build());
 }
 
@@ -366,6 +369,7 @@ void buildAttentionSegment(
             size0(),
             NnCastOpCodeConfig{});
     }
+    att.addSync(zqPipeIndex, SYNC_NODE_SLICES);
 
     nodeBuilder->addSegment(att.build());
 }
@@ -502,6 +506,7 @@ void buildFFNSegment(
             NnCastOpCodeConfig{});
     }
 
+    ff.addSync(zqPipeIndex, SYNC_NODE_SLICES);
     nodeBuilder->addSegment(ff.build());
 }
 
@@ -731,6 +736,7 @@ void buildClassifierSegment(
         pointerBatchedSliceConfig(SRC_PIPE, net->logitsPipeIndex),
         size0(),
         NnCastOpCodeConfig{});
+    end.addSync(net->logitsPipeIndex, SYNC_NODE_SLICES_EXCEPT_ROOT);
 
     nodeBuilder->addSegment(end.build());
 }
