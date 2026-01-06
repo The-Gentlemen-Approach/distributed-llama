@@ -160,25 +160,25 @@ void testRmsNorm_F32_F32_F32() {
             const NnUint batchSize = 2;
 
             // Compare inv_rms buffer
-            float cpuInvRms[N_BATCHES];
-            float gpuInvRms[N_BATCHES];
-            std::memcpy(cpuInvRms, cpuDevice->buffers[0], batchSize * sizeof(float));
-            gpuDevice->data.buffers[0].get()->read((NnByte *)gpuInvRms);
+            std::vector<float> cpuInvRms(N_BATCHES);
+            std::vector<float> gpuInvRms(N_BATCHES);
+            std::memcpy(cpuInvRms.data(), cpuDevice->buffers[0], batchSize * sizeof(float));
+            gpuDevice->data.buffers[0].get()->read((NnByte *)gpuInvRms.data());
 
             printf("Comparing inv_rms buffer:\n");
-            printArray("  CPU inv_rms", cpuInvRms, batchSize);
-            printArray("  GPU inv_rms", gpuInvRms, batchSize);
-            compareArrays("  inv_rms", cpuInvRms, gpuInvRms, batchSize, 0.000002f);
+            printArray("  CPU inv_rms", cpuInvRms.data(), batchSize);
+            printArray("  GPU inv_rms", gpuInvRms.data(), batchSize);
+            compareArrays("  inv_rms", cpuInvRms.data(), gpuInvRms.data(), batchSize, 0.000002f);
 
             // Compare output pipe
             float *cpuOutput = (float *)cpuExecution->pipes[0];
-            float gpuOutput[N_BATCHES * dim];
-            gpuDevice->data.pipes[0].get()->read((NnByte *)gpuOutput);
+            std::vector<float> gpuOutput(N_BATCHES * dim);
+            gpuDevice->data.pipes[0].get()->read((NnByte *)gpuOutput.data());
 
             printf("Comparing output pipe:\n");
             printArray("  CPU output", cpuOutput, batchSize * dim);
-            printArray("  GPU output", gpuOutput, batchSize * dim);
-            compareArrays("  output", cpuOutput, gpuOutput, batchSize * dim, 0.000002f);
+            printArray("  GPU output", gpuOutput.data(), batchSize * dim);
+            compareArrays("  output", cpuOutput, gpuOutput.data(), batchSize * dim, 0.000002f);
         }
     );
 }
@@ -216,12 +216,12 @@ void testSilu_F32_F32() {
         // Verify
         [](NnNetExecution *cpuExecution, NnNetExecution *gpuExecution, NnCpuDevice *cpuDevice, NnVulkanDevice *gpuDevice) {
             float *cpuOutput = (float *)cpuExecution->pipes[0];
-            float gpuOutput[N_BATCHES * dim];
-            gpuDevice->data.pipes[0].get()->read((NnByte *)gpuOutput);
+            std::vector<float> gpuOutput(N_BATCHES * dim);
+            gpuDevice->data.pipes[0].get()->read((NnByte *)gpuOutput.data());
 
             printArray("  CPU output", cpuOutput, N_BATCHES * dim);
-            printArray("  GPU output", gpuOutput, N_BATCHES * dim);
-            compareArrays("  output", cpuOutput, gpuOutput, N_BATCHES * dim, 0.00001f);
+            printArray("  GPU output", gpuOutput.data(), N_BATCHES * dim);
+            compareArrays("  output", cpuOutput, gpuOutput.data(), N_BATCHES * dim, 0.00001f);
         }
     );
 }
@@ -261,12 +261,12 @@ void testMatmul_F32_F32_F32() {
         // Verify
         [](NnNetExecution *cpuExecution, NnNetExecution *gpuExecution, NnCpuDevice *cpuDevice, NnVulkanDevice *gpuDevice) {
             float *cpuOutput = (float *)cpuExecution->pipes[1];
-            float gpuOutput[N_BATCHES * D];
-            gpuDevice->data.pipes[1].get()->read((NnByte *)gpuOutput);
+            std::vector<float> gpuOutput(N_BATCHES * D);
+            gpuDevice->data.pipes[1].get()->read((NnByte *)gpuOutput.data());
 
             printArray("  CPU output", cpuOutput, N_BATCHES * D);
-            printArray("  GPU output", gpuOutput, N_BATCHES * D);
-            compareArrays("  output", cpuOutput, gpuOutput, N_BATCHES * D, 0.0002f, true);
+            printArray("  GPU output", gpuOutput.data(), N_BATCHES * D);
+            compareArrays("  output", cpuOutput, gpuOutput.data(), N_BATCHES * D, 0.0002f, true);
         }
     );
 }
@@ -306,12 +306,12 @@ void testEmbedding_F32_F32() {
         // Verify
         [](NnNetExecution *cpuExecution, NnNetExecution *gpuExecution, NnCpuDevice *cpuDevice, NnVulkanDevice *gpuDevice) {
             float *cpuOutput = (float *)cpuExecution->pipes[1];
-            float gpuOutput[N_BATCHES * EMBEDDING_DIM];
-            gpuDevice->data.pipes[1].get()->read((NnByte *)gpuOutput);
+            std::vector<float> gpuOutput(N_BATCHES * EMBEDDING_DIM);
+            gpuDevice->data.pipes[1].get()->read((NnByte *)gpuOutput.data());
 
             printArray("  CPU output", cpuOutput, N_BATCHES * EMBEDDING_DIM);
-            printArray("  GPU output", gpuOutput, N_BATCHES * EMBEDDING_DIM);
-            compareArrays("  output", cpuOutput, gpuOutput, N_BATCHES * EMBEDDING_DIM, 0.00001f);
+            printArray("  GPU output", gpuOutput.data(), N_BATCHES * EMBEDDING_DIM);
+            compareArrays("  output", cpuOutput, gpuOutput.data(), N_BATCHES * EMBEDDING_DIM, 0.00001f);
         }
     );
 }
@@ -350,12 +350,12 @@ void testSoftmax_F32_F32() {
         // Verify
         [](NnNetExecution *cpuExecution, NnNetExecution *gpuExecution, NnCpuDevice *cpuDevice, NnVulkanDevice *gpuDevice) {
             float *cpuOutput = (float *)cpuExecution->pipes[0];
-            float gpuOutput[nZ * N_BATCHES * dim];
-            gpuDevice->data.pipes[0].get()->read((NnByte *)gpuOutput);
+            std::vector<float> gpuOutput(nZ * N_BATCHES * dim);
+            gpuDevice->data.pipes[0].get()->read((NnByte *)gpuOutput.data());
 
             printArray("  CPU output", cpuOutput, nZ * N_BATCHES * dim);
-            printArray("  GPU output", gpuOutput, nZ * N_BATCHES * dim);
-            compareArrays("  output", cpuOutput, gpuOutput, nZ * N_BATCHES * dim, 0.00001f);
+            printArray("  GPU output", gpuOutput.data(), nZ * N_BATCHES * dim);
+            compareArrays("  output", cpuOutput, gpuOutput.data(), nZ * N_BATCHES * dim, 0.00001f);
         },
         nZ * N_BATCHES  // Pass total batch count for nZ > 1 tests
     );
@@ -363,8 +363,8 @@ void testSoftmax_F32_F32() {
 
 // Test 6: ROPE (Rotary Position Embedding)
 void testRope_F32_F32() {
-    #define ROPE_DIM 2048
-    #define ROPE_KV_DIM 512
+    #define ROPE_DIM 64
+    #define ROPE_KV_DIM 16
 
     const char *testName = "Rope_F32_F32 (Llama)";
 
@@ -372,8 +372,8 @@ void testRope_F32_F32() {
         testName,
         // Build
         [](NnNetConfigBuilder *netBuilder, NnNodeConfigBuilder *nodeBuilder, NnSegmentConfigBuilder *segmentBuilder) {
-            const NnUint nHeads = 32;
-            const NnUint seqLen = 4096;
+            const NnUint nHeads = 4;
+            const NnUint seqLen = 128;
             const NnRopeSlice slice = sliceRope(ROPE_LLAMA, ROPE_DIM, ROPE_KV_DIM, 8, 1, seqLen, ROPE_DIM / nHeads, 500000.0f, 0);
 
             NnUint xPipeIndex = netBuilder->addPipe("X", size2D(F_32, N_BATCHES, ROPE_DIM));
@@ -393,27 +393,36 @@ void testRope_F32_F32() {
             execution->setBatchSize(2);
 
             float *xPipe = (float *)execution->pipes[0];
-            float pos[N_BATCHES];
-            pos[0] = 6.0f;
-            pos[1] = 31.0f;
+            float *posPipe = (float *)execution->pipes[1];
+
+            posPipe[0] = 6.0f;
+            posPipe[1] = 31.0f;
 
             for (NnUint b = 0; b < 2; b++) {
                 for (NnUint i = 0; i < ROPE_DIM; i++)
                     xPipe[b * ROPE_DIM + i] = 1.0f;
             }
 
-            cpuDevice->data.pipes[1].get()->write((NnByte *)pos);
+            // Note: RopeCache is automatically initialized:
+            // - CPU: in NnCpuDevice::createSegment() via opInit
+            // - GPU: in NnVulkanDeviceData constructor
+            // We only need to set input pipes here
+
+            // GPU needs explicit write for position pipe
+            float pos[N_BATCHES];
+            pos[0] = 6.0f;
+            pos[1] = 31.0f;
             gpuDevice->data.pipes[1].get()->write((NnByte *)pos);
         },
         // Verify
         [](NnNetExecution *cpuExecution, NnNetExecution *gpuExecution, NnCpuDevice *cpuDevice, NnVulkanDevice *gpuDevice) {
             float *cpuOutput = (float *)cpuExecution->pipes[0];
-            float gpuOutput[2 * ROPE_DIM];
-            gpuDevice->data.pipes[0].get()->read((NnByte *)gpuOutput);
+            std::vector<float> gpuOutput(2 * ROPE_DIM);
+            gpuDevice->data.pipes[0].get()->read((NnByte *)gpuOutput.data());
 
             printArray("  CPU output", cpuOutput, 2 * ROPE_DIM, 20);
-            printArray("  GPU output", gpuOutput, 2 * ROPE_DIM, 20);
-            compareArrays("  output", cpuOutput, gpuOutput, 2 * ROPE_DIM, 0.00001f);
+            printArray("  GPU output", gpuOutput.data(), 2 * ROPE_DIM, 20);
+            compareArrays("  output", cpuOutput, gpuOutput.data(), 2 * ROPE_DIM, 0.00001f);
         }
     );
 }
@@ -447,18 +456,20 @@ void testMul_F32_F32() {
                 sBuffer[i] = (i % 8) / 10.0f;
             }
 
-            cpuDevice->data.buffers[0].get()->write((NnByte *)sBuffer);
+            // CPU: direct memory copy
+            std::memcpy(cpuDevice->buffers[0], sBuffer, N_BATCHES * dim * sizeof(float));
+            // GPU: use write method
             gpuDevice->data.buffers[0].get()->write((NnByte *)sBuffer);
         },
         // Verify
         [](NnNetExecution *cpuExecution, NnNetExecution *gpuExecution, NnCpuDevice *cpuDevice, NnVulkanDevice *gpuDevice) {
             float *cpuOutput = (float *)cpuExecution->pipes[0];
-            float gpuOutput[N_BATCHES * dim];
-            gpuDevice->data.pipes[0].get()->read((NnByte *)gpuOutput);
+            std::vector<float> gpuOutput(N_BATCHES * dim);
+            gpuDevice->data.pipes[0].get()->read((NnByte *)gpuOutput.data());
 
             printArray("  CPU output", cpuOutput, N_BATCHES * dim);
-            printArray("  GPU output", gpuOutput, N_BATCHES * dim);
-            compareArrays("  output", cpuOutput, gpuOutput, N_BATCHES * dim, 0.00001f);
+            printArray("  GPU output", gpuOutput.data(), N_BATCHES * dim);
+            compareArrays("  output", cpuOutput, gpuOutput.data(), N_BATCHES * dim, 0.00001f);
         }
     );
 }
@@ -497,19 +508,19 @@ void testMergeAdd_F32_F32() {
         // Verify
         [](NnNetExecution *cpuExecution, NnNetExecution *gpuExecution, NnCpuDevice *cpuDevice, NnVulkanDevice *gpuDevice) {
             float *cpuOutput = (float *)cpuExecution->pipes[1];
-            float gpuOutput[N_BATCHES * MERGE_ADD_F32_DIM];
-            gpuDevice->data.pipes[1].get()->read((NnByte *)gpuOutput);
+            std::vector<float> gpuOutput(N_BATCHES * MERGE_ADD_F32_DIM);
+            gpuDevice->data.pipes[1].get()->read((NnByte *)gpuOutput.data());
 
             printArray("  CPU output", cpuOutput, N_BATCHES * MERGE_ADD_F32_DIM);
-            printArray("  GPU output", gpuOutput, N_BATCHES * MERGE_ADD_F32_DIM);
-            compareArrays("  output", cpuOutput, gpuOutput, N_BATCHES * MERGE_ADD_F32_DIM, 0.00001f);
+            printArray("  GPU output", gpuOutput.data(), N_BATCHES * MERGE_ADD_F32_DIM);
+            compareArrays("  output", cpuOutput, gpuOutput.data(), N_BATCHES * MERGE_ADD_F32_DIM, 0.00001f);
         }
     );
 }
 
 // Test 9: MultiheadAttention
 void testMultiheadAtt_F32_F32() {
-    #define MULTIHEAD_ATT_DIM 128
+    #define MULTIHEAD_ATT_DIM 256
 
     const char *testName = "MultiheadAtt_F32_F32";
 
@@ -517,12 +528,12 @@ void testMultiheadAtt_F32_F32() {
         testName,
         // Build
         [](NnNetConfigBuilder *netBuilder, NnNodeConfigBuilder *nodeBuilder, NnSegmentConfigBuilder *segmentBuilder) {
-            const NnUint nHeads = 32;
-            const NnUint nKvHeads = 8;
+            const NnUint nHeads = 8;
+            const NnUint nKvHeads = 4;
             const NnUint headDim = MULTIHEAD_ATT_DIM / nHeads;
-            const NnUint seqLen = 4096;
-            const NnUint qSliceD0 = 2048;
-            const NnUint kvDim0 = 512;
+            const NnUint seqLen = 1024;
+            const NnUint qSliceD0 = 256;
+            const NnUint kvDim0 = 128;
             const NnKvCacheSlice kvCacheSlice = sliceKvCache(kvDim0, seqLen, 1);
             const NnMultiHeadAttSlice multiHeadAttSlice = sliceMultiHeadAtt(nHeads, seqLen, 1, N_BATCHES);
 
@@ -546,35 +557,268 @@ void testMultiheadAtt_F32_F32() {
             execution->setBatchSize(N_BATCHES);
 
             float *xPipe = (float *)execution->pipes[0];
-            float pos[N_BATCHES];
+            float *posPipe = (float *)execution->pipes[1];
+
             for (NnUint b = 0; b < N_BATCHES; b++) {
-                pos[b] = (float)b;
+                posPipe[b] = (float)b;
                 for (NnUint i = 0; i < MULTIHEAD_ATT_DIM; i++)
                     xPipe[b * MULTIHEAD_ATT_DIM + i] = (float)(b * 10 + i % 10) * 0.1f;
             }
 
-            cpuDevice->data.pipes[1].get()->write((NnByte *)pos);
+            // GPU needs explicit write
+            float pos[N_BATCHES];
+            for (NnUint b = 0; b < N_BATCHES; b++)
+                pos[b] = (float)b;
             gpuDevice->data.pipes[1].get()->write((NnByte *)pos);
         },
         // Verify
         [](NnNetExecution *cpuExecution, NnNetExecution *gpuExecution, NnCpuDevice *cpuDevice, NnVulkanDevice *gpuDevice) {
             float *cpuOutput = (float *)cpuExecution->pipes[0];
-            float gpuOutput[N_BATCHES * MULTIHEAD_ATT_DIM];
-            gpuDevice->data.pipes[0].get()->read((NnByte *)gpuOutput);
+            std::vector<float> gpuOutput(N_BATCHES * MULTIHEAD_ATT_DIM);
+            gpuDevice->data.pipes[0].get()->read((NnByte *)gpuOutput.data());
 
             printArray("  CPU output", cpuOutput, N_BATCHES * MULTIHEAD_ATT_DIM, 20);
-            printArray("  GPU output", gpuOutput, N_BATCHES * MULTIHEAD_ATT_DIM, 20);
-            compareArrays("  output", cpuOutput, gpuOutput, N_BATCHES * MULTIHEAD_ATT_DIM, 0.0001f);
+            printArray("  GPU output", gpuOutput.data(), N_BATCHES * MULTIHEAD_ATT_DIM, 20);
+            compareArrays("  output", cpuOutput, gpuOutput.data(), N_BATCHES * MULTIHEAD_ATT_DIM, 0.0001f);
+        }
+    );
+}
+
+// Test 10: SHIFT (KV cache shift)
+template <NnUint dim>
+void testShift_F32_F32() {
+    char testName[256];
+    snprintf(testName, sizeof(testName), "Shift_F32_F32 (dim=%u)", dim);
+
+    executeComparison(
+        testName,
+        // Build
+        [](NnNetConfigBuilder *netBuilder, NnNodeConfigBuilder *nodeBuilder, NnSegmentConfigBuilder *segmentBuilder) {
+            NnUint posPipeIndex = netBuilder->addPipe("POS", size2D(F_32, N_BATCHES, 1));
+            NnUint xPipeIndex = netBuilder->addPipe("X", size2D(F_32, N_BATCHES, dim));
+            NnUint yPipeIndex = netBuilder->addPipe("Y", size2D(F_32, 1, N_BATCHES * dim));
+            segmentBuilder->addOp(
+                OP_SHIFT, "shift", 0,
+                pointerBatchConfig(SRC_PIPE, xPipeIndex),
+                pointerRawConfig(SRC_PIPE, yPipeIndex),
+                size0(),
+                NnShiftOpCodeConfig{posPipeIndex});
+        },
+        // Setup inputs
+        [](NnNetExecution *execution, NnExecutor *executor, NnCpuDevice *cpuDevice, NnVulkanDevice *gpuDevice) {
+            execution->setBatchSize(N_BATCHES);
+
+            float *posPipe = (float *)execution->pipes[0];
+            float *xPipe = (float *)execution->pipes[1];
+
+            for (NnUint b = 0; b < N_BATCHES; b++) {
+                posPipe[b] = (float)b;
+                for (NnUint i = 0; i < dim; i++)
+                    xPipe[b * dim + i] = (float)(b * 100 + i);
+            }
+
+            // GPU needs explicit write
+            float pos[N_BATCHES];
+            for (NnUint b = 0; b < N_BATCHES; b++)
+                pos[b] = (float)b;
+            gpuDevice->data.pipes[0].get()->write((NnByte *)pos);
+        },
+        // Verify
+        [](NnNetExecution *cpuExecution, NnNetExecution *gpuExecution, NnCpuDevice *cpuDevice, NnVulkanDevice *gpuDevice) {
+            float *cpuOutput = (float *)cpuExecution->pipes[2];
+            std::vector<float> gpuOutput(N_BATCHES * dim);
+            gpuDevice->data.pipes[2].get()->read((NnByte *)gpuOutput.data());
+
+            printArray("  CPU output", cpuOutput, N_BATCHES * dim);
+            printArray("  GPU output", gpuOutput.data(), N_BATCHES * dim);
+            compareArrays("  output", cpuOutput, gpuOutput.data(), N_BATCHES * dim, 0.00001f);
+        }
+    );
+}
+
+// Test 11: CAST F32 -> F32 (simple copy)
+template <NnUint dim, NnUint nZ>
+void testCast_F32_F32() {
+    char testName[256];
+    snprintf(testName, sizeof(testName), "Cast_F32_F32 (dim=%u, nZ=%u)", dim, nZ);
+
+    executeComparison(
+        testName,
+        // Build
+        [](NnNetConfigBuilder *netBuilder, NnNodeConfigBuilder *nodeBuilder, NnSegmentConfigBuilder *segmentBuilder) {
+            NnUint xPipeIndex = netBuilder->addPipe("X", size3D(F_32, nZ, N_BATCHES, dim));
+            NnUint yPipeIndex = netBuilder->addPipe("Y", size3D(F_32, nZ, N_BATCHES, dim));
+            segmentBuilder->addOp(
+                OP_CAST, "cast", 0,
+                pointerBatchConfig(SRC_PIPE, xPipeIndex),
+                pointerBatchConfig(SRC_PIPE, yPipeIndex),
+                size0(),
+                NnCastOpCodeConfig{});
+        },
+        // Setup inputs
+        [](NnNetExecution *execution, NnExecutor *executor, NnCpuDevice *cpuDevice, NnVulkanDevice *gpuDevice) {
+            execution->setBatchSize(N_BATCHES);
+            float *xPipe = (float *)execution->pipes[0];
+
+            for (NnUint i = 0; i < nZ * N_BATCHES * dim; i++)
+                xPipe[i] = (float)(i + 1) * 0.1f;
+        },
+        // Verify
+        [](NnNetExecution *cpuExecution, NnNetExecution *gpuExecution, NnCpuDevice *cpuDevice, NnVulkanDevice *gpuDevice) {
+            float *cpuOutput = (float *)cpuExecution->pipes[1];
+            std::vector<float> gpuOutput(nZ * N_BATCHES * dim);
+            gpuDevice->data.pipes[1].get()->read((NnByte *)gpuOutput.data());
+
+            printArray("  CPU output", cpuOutput, nZ * N_BATCHES * dim);
+            printArray("  GPU output", gpuOutput.data(), nZ * N_BATCHES * dim);
+            compareArrays("  output", cpuOutput, gpuOutput.data(), nZ * N_BATCHES * dim, 0.00001f);
+        }
+    );
+}
+
+// Test 12: CAST F32 -> Q80 (quantization)
+template <NnUint dim, NnUint nZ>
+void testCast_F32_Q80() {
+    char testName[256];
+    snprintf(testName, sizeof(testName), "Cast_F32_Q80 (dim=%u, nZ=%u)", dim, nZ);
+
+    executeComparison(
+        testName,
+        // Build
+        [](NnNetConfigBuilder *netBuilder, NnNodeConfigBuilder *nodeBuilder, NnSegmentConfigBuilder *segmentBuilder) {
+            NnUint xPipeIndex = netBuilder->addPipe("X", size3D(F_32, nZ, N_BATCHES, dim));
+            NnUint yPipeIndex = netBuilder->addPipe("Y", size3D(F_Q80, nZ, N_BATCHES, dim));
+            segmentBuilder->addOp(
+                OP_CAST, "cast", 0,
+                pointerBatchConfig(SRC_PIPE, xPipeIndex),
+                pointerBatchConfig(SRC_PIPE, yPipeIndex),
+                size0(),
+                NnCastOpCodeConfig{});
+        },
+        // Setup inputs
+        [](NnNetExecution *execution, NnExecutor *executor, NnCpuDevice *cpuDevice, NnVulkanDevice *gpuDevice) {
+            execution->setBatchSize(N_BATCHES);
+            float *xPipe = (float *)execution->pipes[0];
+
+            for (NnUint i = 0; i < nZ * N_BATCHES * dim; i++)
+                xPipe[i] = (float)(i + 1) * 0.5f;
+        },
+        // Verify
+        [](NnNetExecution *cpuExecution, NnNetExecution *gpuExecution, NnCpuDevice *cpuDevice, NnVulkanDevice *gpuDevice) {
+            // Dequantize CPU output
+            NnBlockQ80 *cpuQ80 = (NnBlockQ80 *)cpuExecution->pipes[1];
+            std::vector<float> cpuOutput(nZ * N_BATCHES * dim);
+            dequantizeQ80toF32(cpuQ80, cpuOutput.data(), nZ * N_BATCHES * dim, 1, 0);
+
+            // Dequantize GPU output
+            std::vector<NnBlockQ80> gpuQ80Raw(nZ * N_BATCHES * dim / Q80_BLOCK_SIZE);
+            gpuDevice->data.pipes[1].get()->read((NnByte *)gpuQ80Raw.data());
+            std::vector<float> gpuOutput(nZ * N_BATCHES * dim);
+            dequantizeQ80toF32(gpuQ80Raw.data(), gpuOutput.data(), nZ * N_BATCHES * dim, 1, 0);
+
+            printArray("  CPU output (dequantized)", cpuOutput.data(), nZ * N_BATCHES * dim);
+            printArray("  GPU output (dequantized)", gpuOutput.data(), nZ * N_BATCHES * dim);
+            compareArrays("  output", cpuOutput.data(), gpuOutput.data(), nZ * N_BATCHES * dim, 0.01f);  // Higher tolerance for Q80
         }
     );
 }
 
 #endif // DLLAMA_VULKAN
 
-int main() {
+void printUsage(const char *programName) {
+    printf("Usage: %s [test_name]\n\n", programName);
+    printf("Available tests:\n");
+    printf("  all           - Run all tests (default)\n");
+    printf("  rmsnorm       - RMS Normalization tests\n");
+    printf("  silu          - SILU activation tests\n");
+    printf("  matmul        - Matrix multiplication tests\n");
+    printf("  embedding     - Embedding lookup test\n");
+    printf("  softmax       - Softmax tests\n");
+    printf("  rope          - Rotary Position Embedding test\n");
+    printf("  mul           - Element-wise multiplication tests\n");
+    printf("  mergeadd      - Residual connection test\n");
+    printf("  multiheadatt  - Multi-head Attention test\n");
+    printf("  shift         - KV cache shift tests\n");
+    printf("  cast          - Type casting tests (F32<->Q80)\n");
+    printf("\nExample:\n");
+    printf("  %s rope         # Run only ROPE test\n", programName);
+    printf("  %s              # Run all tests\n", programName);
+}
+
+void runTest(const char *testName) {
+    if (strcmp(testName, "all") == 0 || strcmp(testName, "rmsnorm") == 0) {
+        testRmsNorm_F32_F32_F32<32>();
+        testRmsNorm_F32_F32_F32<128>();
+        testRmsNorm_F32_F32_F32<1024>();
+    }
+
+    if (strcmp(testName, "all") == 0 || strcmp(testName, "silu") == 0) {
+        testSilu_F32_F32<32>();
+        testSilu_F32_F32<128>();
+    }
+
+    if (strcmp(testName, "all") == 0 || strcmp(testName, "matmul") == 0) {
+        testMatmul_F32_F32_F32<64, 64>();
+        testMatmul_F32_F32_F32<128, 64>();
+        testMatmul_F32_F32_F32<64, 128>();
+    }
+
+    if (strcmp(testName, "all") == 0 || strcmp(testName, "embedding") == 0) {
+        testEmbedding_F32_F32();
+    }
+
+    if (strcmp(testName, "all") == 0 || strcmp(testName, "softmax") == 0) {
+        testSoftmax_F32_F32<64, 1>();
+        testSoftmax_F32_F32<128, 2>();
+        testSoftmax_F32_F32<64, 4>();
+        testSoftmax_F32_F32<256, 8>();
+    }
+
+    if (strcmp(testName, "all") == 0 || strcmp(testName, "rope") == 0) {
+        testRope_F32_F32();
+    }
+
+    if (strcmp(testName, "all") == 0 || strcmp(testName, "mul") == 0) {
+        testMul_F32_F32<64>();
+        testMul_F32_F32<128>();
+    }
+
+    if (strcmp(testName, "all") == 0 || strcmp(testName, "mergeadd") == 0) {
+        testMergeAdd_F32_F32();
+    }
+
+    if (strcmp(testName, "all") == 0 || strcmp(testName, "multiheadatt") == 0) {
+        testMultiheadAtt_F32_F32();
+    }
+
+    if (strcmp(testName, "all") == 0 || strcmp(testName, "shift") == 0) {
+        testShift_F32_F32<32>();
+        testShift_F32_F32<64>();
+    }
+
+    if (strcmp(testName, "all") == 0 || strcmp(testName, "cast") == 0) {
+        testCast_F32_F32<32, 1>();
+        testCast_F32_F32<64, 1>();
+        testCast_F32_F32<128, 1>();
+        testCast_F32_Q80<64, 1>();   // Q80는 64 이상만 (메모리 정렬)
+        testCast_F32_Q80<128, 1>();
+    }
+}
+
+int main(int argc, char *argv[]) {
     initQuants();
 
 #ifdef DLLAMA_VULKAN
+    const char *testName = "all";
+
+    if (argc > 1) {
+        if (strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0) {
+            printUsage(argv[0]);
+            return 0;
+        }
+        testName = argv[1];
+    }
+
     printf("\n");
     printf("╔═══════════════════════════════════════════════════════════╗\n");
     printf("║         CPU vs GPU Operation Comparison Test             ║\n");
@@ -584,35 +828,17 @@ int main() {
     printf("╚═══════════════════════════════════════════════════════════╝\n");
     printf("\n");
 
-    // Run tests
-    testRmsNorm_F32_F32_F32<32>();
-    testRmsNorm_F32_F32_F32<128>();
-    testRmsNorm_F32_F32_F32<1024>();
+    if (strcmp(testName, "all") != 0) {
+        printf("🎯 Running test: %s\n\n", testName);
+    } else {
+        printf("🎯 Running all tests\n\n");
+    }
 
-    testSilu_F32_F32<32>();
-    testSilu_F32_F32<128>();
-
-    testMatmul_F32_F32_F32<64, 64>();
-    testMatmul_F32_F32_F32<128, 64>();
-    testMatmul_F32_F32_F32<64, 128>();
-
-    testEmbedding_F32_F32();
-
-    testSoftmax_F32_F32<64, 1>();
-    testSoftmax_F32_F32<128, 2>();
-    testSoftmax_F32_F32<64, 4>();   // Test nZ=4
-    testSoftmax_F32_F32<256, 8>();  // Test nZ=8
-
-    // testRope_F32_F32();
-    // testMul_F32_F32<64>();
-    // testMergeAdd_F32_F32();
-    // testMultiheadAtt_F32_F32();
-    // 아직 작성 중인 test function
-
+    runTest(testName);
 
     printf("\n");
     printf("╔═══════════════════════════════════════════════════════════╗\n");
-    printf("║                   Test Complete                          ║\n");
+    printf("║                   Tests Complete!                        ║\n");
     printf("╚═══════════════════════════════════════════════════════════╝\n");
     printf("\n");
 
