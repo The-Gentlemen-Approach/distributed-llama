@@ -151,3 +151,6 @@ hpipe-network-test: src/hpipe/tests/network-test.cpp $(HPIPE_CORE_OBJS) $(HPIPE_
 
 hpipe-pipeline-test: src/hpipe/tests/pipeline-test.cpp $(HPIPE_CORE_OBJS) $(HPIPE_NET_OBJS) $(HPIPE_LLM_OBJS) $(COMMON_OBJS) $(NN_OBJS) nn-network.o
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LIBS)
+
+hpipe-policy-test: src/hpipe/tests/policy-test.cpp $(HPIPE_CORE_OBJS) $(COMMON_OBJS) $(NN_OBJS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LIBS)
