@@ -45,15 +45,24 @@ std::unique_ptr<HPipeWorkerNetwork> HPipeWorkerNetwork::serve(int port) {
     printf("🔶 HPipeWorker: ID=%d, Total=%d, First=%d, Last=%d\n",
            workerId, totalWorkers, isFirst, isLast);
 
-    // 3. Next 노드 연결 설정 (먼저 연결)
+    // 3. Root에게 Phase 1 ACK 전송 (토폴로지 수신 완료)
+    writeHPipeAck(rootFd);
+    printf("🔶 HPipeWorker: Sent Phase 1 ACK to root\n");
+
+    // ==================================================================================
+    // PHASE 2: Root로부터 next/prev 정보 수신 후 파이프라인 구성
+    // ==================================================================================
+
+    // 4. Next 노드 연결 설정
     NnSocket nextSock;
     if (!isLast) {
-        // 다음 워커에게 연결
+        // 다음 워커 정보 수신
         char nextHost[256];
         int nextPort;
         readSocket(rootFd, nextHost, 256);
         readSocket(rootFd, &nextPort, sizeof(nextPort));
 
+        printf("🔶 HPipeWorker: Received next worker info: %s:%d\n", nextHost, nextPort);
         printf("🔶 HPipeWorker: Connecting to next worker at %s:%d\n", nextHost, nextPort);
 
         // 다음 워커가 준비될 때까지 재시도
@@ -124,7 +133,7 @@ std::unique_ptr<HPipeWorkerNetwork> HPipeWorkerNetwork::serve(int port) {
         printf("🔶 HPipeWorker: Last worker - next is root\n");
     }
 
-    // 4. Prev 노드 연결 설정 (나중에 수락)
+    // 5. Prev 노드 연결 설정 (나중에 수락)
     NnSocket prevSock;
     if (!isFirst) {
         // 이전 워커로부터 연결 수락
@@ -137,11 +146,11 @@ std::unique_ptr<HPipeWorkerNetwork> HPipeWorkerNetwork::serve(int port) {
         printf("🔶 HPipeWorker: First worker - prev is root\n");
     }
 
-    printf("🔶 HPipeWorker: Network initialized\n");
+    printf("🔶 HPipeWorker: Pipeline network initialized\n");
 
-    // Root에게 준비 완료 신호 전송
+    // Root에게 Phase 2 ACK 전송 (파이프라인 구성 완료)
     writeHPipeAck(rootFd);
-    printf("🔶 HPipeWorker: Sent ready ACK to root\n");
+    printf("🔶 HPipeWorker: Sent Phase 2 ACK to root\n");
 
     // release()를 사용하여 소켓 소유권을 이전 (close 방지)
     int rootSocketFd = rootSock.release();

@@ -32,6 +32,9 @@ std::unique_ptr<HPipeRootNetwork> HPipeRootNetwork::connect(
     std::vector<NnSocket> sockets;
     sockets.reserve(nWorkers);
 
+    // ==================================================================================
+    // PHASE 1: 모든 워커에 연결하고 토폴로지 정보만 전송
+    // ==================================================================================
     for (int i = 0; i < nWorkers; i++) {
         printf("🔷 HPipeRoot: Connecting to worker %d at %s:%d\n", i, hosts[i], ports[i]);
 
@@ -103,7 +106,7 @@ std::unique_ptr<HPipeRootNetwork> HPipeRootNetwork::connect(
         sockets.emplace_back(sock);
         printf("🔷 HPipeRoot: Connected to worker %d\n", i);
 
-        // 워커에게 토폴로지 정보 전송
+        // 워커에게 토폴로지 정보만 전송 (next/prev 정보는 아직 보내지 않음)
         int workerId = i;
         int totalWorkers = nWorkers;
         bool isFirst = (i == 0);
@@ -114,22 +117,40 @@ std::unique_ptr<HPipeRootNetwork> HPipeRootNetwork::connect(
         writeSocket(sock, &isFirst, sizeof(isFirst));
         writeSocket(sock, &isLast, sizeof(isLast));
 
-        // 다음 워커 정보 전송 (마지막 워커가 아닐 때)
-        if (!isLast) {
-            writeSocket(sock, hosts[i + 1], 256);  // 고정 크기
-            writeSocket(sock, &ports[i + 1], sizeof(ports[i + 1]));
-        }
-
         printf("🔷 HPipeRoot: Sent topology info to worker %d (First=%d, Last=%d)\n",
                i, isFirst, isLast);
     }
 
-    // 모든 워커가 파이프라인 연결을 완료할 때까지 대기
-    printf("🔷 HPipeRoot: Waiting for all workers to be ready...\n");
+    // 모든 워커로부터 Phase 1 ACK 수신 (토폴로지 수신 확인)
+    printf("🔷 HPipeRoot: Waiting for Phase 1 ACK from all workers...\n");
     for (int i = 0; i < nWorkers; i++) {
-        // 각 워커로부터 준비 완료 ACK 수신
         readHPipeAck(sockets[i].fd);
-        printf("🔷 HPipeRoot: Worker %d is ready\n", i);
+        printf("🔷 HPipeRoot: Worker %d acknowledged Phase 1\n", i);
+    }
+    printf("🔷 HPipeRoot: All workers received topology info\n");
+
+    // ==================================================================================
+    // PHASE 2: 모든 워커에게 next/prev 정보 전송 및 파이프라인 구성 시작
+    // ==================================================================================
+    printf("🔷 HPipeRoot: Starting Phase 2 - pipeline setup...\n");
+    for (int i = 0; i < nWorkers; i++) {
+        int sock = sockets[i].fd;
+        bool isLast = (i == nWorkers - 1);
+
+        // 다음 워커 정보 전송 (마지막 워커가 아닐 때)
+        if (!isLast) {
+            writeSocket(sock, hosts[i + 1], 256);  // 고정 크기
+            writeSocket(sock, &ports[i + 1], sizeof(ports[i + 1]));
+            printf("🔷 HPipeRoot: Sent next worker info to worker %d: %s:%d\n",
+                   i, hosts[i + 1], ports[i + 1]);
+        }
+    }
+
+    // 모든 워커가 파이프라인 연결을 완료할 때까지 대기
+    printf("🔷 HPipeRoot: Waiting for Phase 2 ACK (pipeline ready)...\n");
+    for (int i = 0; i < nWorkers; i++) {
+        readHPipeAck(sockets[i].fd);
+        printf("🔷 HPipeRoot: Worker %d pipeline ready\n", i);
     }
     printf("🔷 HPipeRoot: All workers ready\n");
 
