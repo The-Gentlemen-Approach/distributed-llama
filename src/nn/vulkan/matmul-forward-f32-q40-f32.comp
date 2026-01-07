@@ -1,0 +1,154 @@
+#version 450
+
+// 필수 확장 기능 활성화
+#extension GL_EXT_control_flow_attributes : enable
+#extension GL_EXT_shader_8bit_storage : enable
+#extension GL_EXT_shader_16bit_storage : enable
+#extension GL_EXT_shader_explicit_arithmetic_types : enable
+#extension GL_EXT_scalar_block_layout : enable // 18바이트 구조체 정렬 문제 해결의 핵심
+
+#define TILE_SIZE_X 2
+#define TILE_SIZE_D 8
+#define Q40_BLOCK_SIZE 32
+
+layout(local_size_x_id = 2, local_size_y = 1, local_size_z = 1) in;
+
+layout(constant_id = 0) const uint N_BATCHES = 32;
+layout(constant_id = 1) const uint N_Z = 1;
+layout(constant_id = 2) const uint N_THREADS = 32;
+
+struct BatchInfo {
+    uint inputOffset;
+    uint inputSizeX;
+    uint outputOffset;
+    uint outputSizeX;
+};
+
+// SSBOs use std430 layout
+layout(std430, binding = 0) readonly buffer inputBuffer { float x[]; };
+layout(std430, binding = 1) writeonly buffer outputBuffer { float y[]; };
+layout(binding = 2) readonly uniform batchInfosBuffer { BatchInfo infos[N_Z * N_BATCHES]; };
+
+// [핵심] 가중치 버퍼를 구조체가 아닌 uint16_t 배열로 취급
+// BlockQ40은 18바이트지만, GPU 자동 정렬(Padding)로 인해 20~32바이트로 밀리는 문제를 원천 차단.
+// GL_EXT_scalar_block_layout 덕분에 uint16_t는 빈 공간 없이 2바이트씩 빽빽하게 채워짐.
+layout(std430, binding = 3) readonly buffer weightBuffer { uint16_t weight[]; };
+
+layout(binding = 4) readonly uniform opConfigBuffer {
+    uint nExperts;
+    uint nActiveExperts;
+    uint activeExpertIndexesBufferIndex;
+};
+layout(std430, binding = 5) readonly buffer activeExpertIndexesBuffer { float activeExpertIndexes[]; };
+
+shared float sums[N_THREADS * TILE_SIZE_D];
+
+void main() {
+    const uint threadIndex = gl_LocalInvocationID.x;
+    const uint workGroupIndex = gl_WorkGroupID.x;
+    const uint batchIndex = gl_WorkGroupID.y;
+    const uint zIndex = gl_WorkGroupID.z;
+
+    const uint b = zIndex * N_BATCHES + batchIndex;
+    const BatchInfo info = infos[b];
+    
+    // [단위 변환]
+    // CPU는 F32 개수(Scalar Count)를 보냄 -> GPU는 이를 블록 개수(Block Count)로 변환
+    const uint inputBlocks = info.inputSizeX / Q40_BLOCK_SIZE;
+
+    const uint expertIndex = nExperts == 0
+        ? 0
+        : uint(activeExpertIndexes[batchIndex * nActiveExperts + zIndex]);
+    
+    const uint expertOffset = expertIndex * inputBlocks * info.outputSizeX;
+
+    const uint inputOffset = info.inputOffset;
+    const uint d = TILE_SIZE_D * workGroupIndex;
+
+    // 공유 메모리 초기화
+    for (uint dt = 0; dt < TILE_SIZE_D; dt++) {
+        sums[threadIndex * TILE_SIZE_D + dt] = 0.0f;
+    }
+
+    // 메인 연산 루프
+    [[unroll]] for (uint it = 0; it < TILE_SIZE_X; it++) {
+        const uint blockIdx = threadIndex + it * N_THREADS;
+        
+        // [안전 장치] Out-of-Bounds Read 방지
+        // 쉐이더는 기본적으로 TILE_SIZE_X만큼 루프를 돌려 하므로,
+        // 실제 데이터 크기(inputBlocks)보다 더 많이 읽으려 할 때 접근을 막음.
+        if (blockIdx < inputBlocks) {
+            
+            const uint xi = inputOffset + blockIdx * Q40_BLOCK_SIZE;
+
+            // 입력 데이터 로드 (Float32)
+            float xVal[Q40_BLOCK_SIZE];
+            [[unroll]] for (uint k = 0; k < Q40_BLOCK_SIZE; k++) {
+                xVal[k] = x[xi + k];
+            }
+
+            [[unroll]] for (uint dt = 0; dt < TILE_SIZE_D; dt++) {
+                // 가중치 인덱스 계산
+                const uint wi = expertOffset + (d + dt) * inputBlocks + blockIdx;
+                
+                // [수동 오프셋 계산] 18바이트(9 * uint16) 단위로 정확히 점프
+                const uint base = wi * 9; 
+                
+                // 스케일(d) 로드: 첫 번째 uint16_t
+                uint dBits = uint(weight[base]);
+                vec2 dVec = unpackHalf2x16(dBits); // 비트 손실 없이 FP16 -> FP32 변환
+                const float wd = dVec.x;
+
+                float s = 0.0f;
+                // Q40 데이터 로드 및 내적 연산
+                [[unroll]] for (uint j = 0; j < Q40_BLOCK_SIZE / 2; j++) {
+                    // qs 데이터는 base + 1부터 시작 (각 uint16당 2바이트 포함)
+                    uint wordIdx = 1 + (j / 2);
+                    uint16_t word = weight[base + wordIdx];
+                    
+                    uint8_t q;
+                    if (j % 2 == 0) {
+                        q = uint8_t(word & 0xFFus); // 하위 바이트
+                    } else {
+                        q = uint8_t(word >> 8);     // 상위 바이트
+                    }
+
+                    // Dequantization & Dot Product
+                    // Low Nibble -> x[j]
+                    // High Nibble -> x[j + 16]
+                    float w0 = float(int(q & 0xFu) - 8) * wd;
+                    float w1 = float(int(q >> 4) - 8) * wd;
+                    
+                    s += xVal[j] * w0;
+                    s += xVal[j + Q40_BLOCK_SIZE / 2] * w1;
+                }
+                sums[threadIndex * TILE_SIZE_D + dt] += s;
+            }
+        }
+    }
+
+    barrier();
+
+    // [병렬 리덕션] 스레드 간 합산
+    const uint outputOffset = infos[b].outputOffset;
+
+    uint i = N_THREADS;
+    while (i % 2 == 0) {
+        i >>= 1;
+        for (uint dt = 0; dt < TILE_SIZE_D; dt++) {
+            if (threadIndex < i) {
+                sums[threadIndex * TILE_SIZE_D + dt] += sums[(threadIndex + i) * TILE_SIZE_D + dt];
+            }
+        }
+        barrier();
+    }
+    
+    // 최종 결과 출력
+    for (uint dt = threadIndex; dt < TILE_SIZE_D; dt += N_THREADS) {
+        float s = 0.0;
+        for (uint j = 1; j <= i; j++) {
+            s += sums[(j - 1) * TILE_SIZE_D + dt];
+        }
+        y[outputOffset + d + dt] = float(s);
+    }
+}
