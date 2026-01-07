@@ -57,7 +57,8 @@ std::unique_ptr<HPipeWorkerNetwork> HPipeWorkerNetwork::serve(int port) {
         printf("🔶 HPipeWorker: Connecting to next worker at %s:%d\n", nextHost, nextPort);
 
         // 다음 워커가 준비될 때까지 재시도
-        int maxRetries = 50;  // 최대 5초 대기 (50 * 100ms)
+        // Increased timeout to handle slow worker startup (model download, etc.)
+        int maxRetries = 900;  // 최대 90초 대기 (900 * 100ms)
         int sock = -1;
         for (int retry = 0; retry < maxRetries; retry++) {
             struct addrinfo hints, *addr = NULL;

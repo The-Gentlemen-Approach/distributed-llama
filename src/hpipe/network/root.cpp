@@ -50,16 +50,56 @@ std::unique_ptr<HPipeRootNetwork> HPipeRootNetwork::connect(
             throw NnConnectionSocketException("Cannot resolve worker address");
         }
 
-        int sock = socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol);
-        if (sock < 0) {
-            throw std::runtime_error("Cannot create socket");
-        }
+        // Retry connection to handle slow worker startup or port forwarding setup
+        int maxRetries = 60;  // 60 attempts * 1 second = 60 seconds
+        int sock = -1;
+        bool connected = false;
 
-        if (::connect(sock, addr->ai_addr, addr->ai_addrlen) != 0) {
-            throw NnConnectionSocketException("Cannot connect to worker");
+        for (int retry = 0; retry < maxRetries; retry++) {
+            sock = socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol);
+            if (sock < 0) {
+                if (retry < maxRetries - 1) {
+                    #ifndef _WIN32
+                    sleep(1);
+                    #else
+                    Sleep(1000);
+                    #endif
+                    continue;
+                }
+                freeaddrinfo(addr);
+                throw std::runtime_error("Cannot create socket");
+            }
+
+            if (::connect(sock, addr->ai_addr, addr->ai_addrlen) == 0) {
+                connected = true;
+                break;
+            }
+
+            // Connection failed, close socket and retry
+            #ifdef _WIN32
+            closesocket(sock);
+            #else
+            close(sock);
+            #endif
+            sock = -1;
+
+            if (retry < maxRetries - 1) {
+                if (retry == 0) {
+                    printf("🔷 HPipeRoot: Worker %d not ready yet, retrying...\n", i);
+                }
+                #ifndef _WIN32
+                sleep(1);
+                #else
+                Sleep(1000);
+                #endif
+            }
         }
 
         freeaddrinfo(addr);
+
+        if (!connected || sock < 0) {
+            throw NnConnectionSocketException("Cannot connect to worker after retries");
+        }
         sockets.emplace_back(sock);
         printf("🔷 HPipeRoot: Connected to worker %d\n", i);
 
