@@ -118,6 +118,9 @@ simple-dllama: src/simple/main.cpp $(SIMPLE_OBJS) $(COMMON_OBJS) $(NN_OBJS) ${DE
 # ==========================================
 # H-Pipe
 # ==========================================
+hpipe-device-profile.o: src/hpipe/core/device-profile.cpp
+	$(CXX) $(CXXFLAGS) -c $^ -o $@
+
 hpipe-network-base.o: src/hpipe/network/base.cpp
 	$(CXX) $(CXXFLAGS) -c $^ -o $@
 hpipe-network-root.o: src/hpipe/network/root.cpp
@@ -132,18 +135,19 @@ hpipe-llm-weight-loader.o: src/hpipe/llm/weight-loader.cpp
 hpipe-llm-inference.o: src/hpipe/llm/inference.cpp
 	$(CXX) $(CXXFLAGS) -c $^ -o $@
 
+HPIPE_CORE_OBJS = hpipe-device-profile.o
 HPIPE_NET_OBJS = hpipe-network-base.o hpipe-network-root.o hpipe-network-worker.o
 HPIPE_LLM_OBJS = hpipe-llm-network-builder.o hpipe-llm-weight-loader.o hpipe-llm-inference.o
 
-hpipe-root: src/hpipe/main/root.cpp $(HPIPE_NET_OBJS) $(HPIPE_LLM_OBJS) $(COMMON_OBJS) $(NN_OBJS) nn-network.o ${DEPS}
+hpipe-root: src/hpipe/main/root.cpp $(HPIPE_CORE_OBJS) $(HPIPE_NET_OBJS) $(HPIPE_LLM_OBJS) $(COMMON_OBJS) $(NN_OBJS) nn-network.o ${DEPS}
 	$(CXX) $(CXXFLAGS) $(filter-out %.spv, $^) -o $@ $(LIBS)
 
-hpipe-worker: src/hpipe/main/worker.cpp $(HPIPE_NET_OBJS) $(HPIPE_LLM_OBJS) $(COMMON_OBJS) $(NN_OBJS) nn-network.o ${DEPS}
+hpipe-worker: src/hpipe/main/worker.cpp $(HPIPE_CORE_OBJS) $(HPIPE_NET_OBJS) $(HPIPE_LLM_OBJS) $(COMMON_OBJS) $(NN_OBJS) nn-network.o ${DEPS}
 	$(CXX) $(CXXFLAGS) $(filter-out %.spv, $^) -o $@ $(LIBS)
 
 # Tests
-hpipe-network-test: src/hpipe/tests/network-test.cpp $(HPIPE_NET_OBJS) $(COMMON_OBJS) $(NN_OBJS) nn-network.o
+hpipe-network-test: src/hpipe/tests/network-test.cpp $(HPIPE_CORE_OBJS) $(HPIPE_NET_OBJS) $(COMMON_OBJS) $(NN_OBJS) nn-network.o
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LIBS)
 
-hpipe-pipeline-test: src/hpipe/tests/pipeline-test.cpp $(HPIPE_NET_OBJS) $(HPIPE_LLM_OBJS) $(COMMON_OBJS) $(NN_OBJS) nn-network.o
+hpipe-pipeline-test: src/hpipe/tests/pipeline-test.cpp $(HPIPE_CORE_OBJS) $(HPIPE_NET_OBJS) $(HPIPE_LLM_OBJS) $(COMMON_OBJS) $(NN_OBJS) nn-network.o
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LIBS)
