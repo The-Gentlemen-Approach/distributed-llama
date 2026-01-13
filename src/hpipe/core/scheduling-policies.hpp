@@ -7,15 +7,29 @@
 #include <algorithm>
 #include <limits>
 #include <set>
+#include <cmath> // ceil 사용을 위해 추가
 
 class OptimalSequenceSlicingPolicy : public IPipelineScheduler {
 private:
     LlmHeader header;
     std::vector<DeviceProfile> devices;
     std::vector<SegmentRange> assignedRanges;
+    int wave_size; // GPU의 Tiling/Wave 크기 (예: 128, 256)
 
+    // GPU의 계단식 연산 특성을 반영한 비용 계산 함수
     double calculateCost(int sliceSize, int historySize) {
         double maxStageLatency = 0.0;
+
+        // [핵심 변경 사항]
+        // GPU 연산 시간은 선형적(Linear)이지 않고, Wave/Tile 크기에 따라 계단식(Step-wise)으로 증가함.
+        // 따라서 sliceSize를 wave_size의 배수로 '올림(Ceil)' 처리하여 '유효 연산 크기(Effective Size)'를 구함.
+        // 이를 통해 TFLOPS(이론 성능)가 아닌 Achieved FLOPs(실제 성능) 기반의 시간을 모사함.
+        
+        int num_waves = (sliceSize + wave_size - 1) / wave_size;
+        int effectiveSliceSize = num_waves * wave_size;
+        
+        // *참고: 만약 sliceSize가 0이면 비용도 0이어야 하므로 예외 처리 필요할 수 있으나,
+        // 로직상 sliceSize >= 1 이 들어오므로 그대로 진행.
 
         for (size_t m = 0; m < devices.size(); ++m) {
             const auto& device = devices[m];
@@ -23,9 +37,14 @@ private:
 
             double totalCompTime = 0.0;
             for (int k = range.start; k <= range.end; ++k) {
-                totalCompTime += device.computationTime(header, k, sliceSize, historySize);
+                // 수정된 부분: sliceSize 대신 effectiveSliceSize를 사용하여
+                // Padding이 포함된(실제 GPU가 수행하는) 연산 시간을 계산하도록 유도
+                totalCompTime += device.computationTime(header, k, effectiveSliceSize, historySize);
             }
-
+            
+            // 통신 시간은 실제 데이터 양(sliceSize)에 비례할 수도 있고, 
+            // 커널 런치 오버헤드 등을 고려해 effectiveSize를 쓸 수도 있으나,
+            // 일반적으로 전송은 Byte 단위 packing이 가능하므로 sliceSize 유지 (또는 필요시 변경)
             double stageLatency = totalCompTime + device.communicationTime(header, sliceSize);
 
             if (stageLatency > maxStageLatency) {
@@ -36,10 +55,12 @@ private:
     }
 
 public:
+    // 생성자에 wave_size 추가 (기본값 256: A100/H100 등 최신 GPU의 통상적인 효율적 타일 크기 고려)
     OptimalSequenceSlicingPolicy(const LlmHeader& h,
                                  const std::vector<DeviceProfile>& devs,
-                                 const std::vector<SegmentRange>& ranges)
-        : header(h), devices(devs), assignedRanges(ranges) {}
+                                 const std::vector<SegmentRange>& ranges,
+                                 int wave_size = 256)
+        : header(h), devices(devs), assignedRanges(ranges), wave_size(wave_size) {}
 
     std::vector<ChunkTask> schedule(const std::vector<int>& prompt_tokens, int max_seq_len) override {
         int N = prompt_tokens.size();
@@ -48,9 +69,11 @@ public:
         std::vector<std::vector<double>> G(N + 1, std::vector<double>(N + 1, 0.0));
         std::set<double> T_set;
 
+        // DP 테이블 구성
         for (int s_cur = 1; s_cur <= N; ++s_cur) {
             for (int prev = 0; prev < s_cur; ++prev) {
                 int s_step = s_cur - prev;
+                // calculateCost 내부에서 Wave Quantization 적용됨
                 double cost = calculateCost(s_step, prev);
                 G[s_cur][prev] = cost;
                 T_set.insert(cost);
@@ -62,6 +85,7 @@ public:
         double T_star = std::numeric_limits<double>::infinity();
         std::vector<int> S_star;
 
+        // Min-Max Latency 최적화 루프
         for (double t_max : T) {
 
             std::vector<double> L(N + 1, std::numeric_limits<double>::infinity());
