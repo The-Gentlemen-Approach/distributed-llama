@@ -24,12 +24,13 @@ struct RootArgs {
     char* tokenizerPath;
     char* prompt;
     std::vector<std::string> workerAddrs;
+    std::vector<std::string> deviceProfiles; // Format: "tflops,bandwidth,latency"
     int nThreads;
     float temperature;
     float topp;
     int steps;
     unsigned long long seed;
-    int chunkSize; 
+    int chunkSize;
     int maxSeqLen; 
 
     static RootArgs parse(int argc, char** argv) {
@@ -59,6 +60,13 @@ struct RootArgs {
                 i++;
                 while (i < argc && argv[i][0] != '-') {
                     args.workerAddrs.push_back(argv[i]);
+                    i++;
+                }
+                i--;
+            } else if (std::strcmp(name, "--device-profiles") == 0) {
+                i++;
+                while (i < argc && argv[i][0] != '-') {
+                    args.deviceProfiles.push_back(argv[i]);
                     i++;
                 }
                 i--;
@@ -93,33 +101,73 @@ void printUsage() {
     std::cout << "  ./hpipe-root --model <path> --tokenizer <path> --prompt <text>\n";
     std::cout << "               --workers <addr1> <addr2> ... [options]\n";
     std::cout << "\nOptions:\n";
-    std::cout << "  --nthreads <n>      Number of threads (default: 4)\n";
-    std::cout << "  --max-seq-len <n>   Maximum sequence length (default: model limit)\n";
-    std::cout << "  --chunk-size <n>    Sequence chunk size (Ignored when using OptPolicy)\n";
-    std::cout << "  --steps <n>         Number of steps to generate (default: 256)\n";
-    std::cout << "  --temperature <f>   Sampling temperature (default: 0.8)\n";
-    std::cout << "  --topp <f>          Sampling top-p (default: 0.9)\n";
-    std::cout << "  --seed <n>          Random seed\n";
+    std::cout << "  --nthreads <n>                Number of threads (default: 4)\n";
+    std::cout << "  --max-seq-len <n>             Maximum sequence length (default: model limit)\n";
+    std::cout << "  --chunk-size <n>              Sequence chunk size (Ignored when using OptPolicy)\n";
+    std::cout << "  --device-profiles <p1> <p2>   Device profiles (format: tflops,bandwidth,latency)\n";
+    std::cout << "                                Example: 100.0,50.0,0.0001\n";
+    std::cout << "  --steps <n>                   Number of steps to generate (default: 256)\n";
+    std::cout << "  --temperature <f>             Sampling temperature (default: 0.8)\n";
+    std::cout << "  --topp <f>                    Sampling top-p (default: 0.9)\n";
+    std::cout << "  --seed <n>                    Random seed\n";
 }
 
-// [수정됨] Workload Distribution을 위한 가상 디바이스 프로필 생성
-// Latency(고정 오버헤드) 값을 3번째 인자로 추가하여 전달합니다.
-std::vector<DeviceProfile> getMockDeviceProfiles(int nWorkers) {
-    std::vector<DeviceProfile> profiles;
-    
-    // 일반적인 이더넷 환경을 가정하여 200us (0.0002초)의 고정 오버헤드 설정
-    // 이 값이 클수록 알고리즘은 더 큰 청크로 묶으려고 합니다.
-    float latency = 2e-4f; 
+// Parse device profile from string format "tflops,bandwidth,latency"
+DeviceProfile parseDeviceProfile(const std::string& profileStr) {
+    float tflops = 100.0f;
+    float bandwidth = 50.0f;
+    float latency = 1e-4f;
 
-    // 기존 설정값에 latency 인자 추가 (TFLOPS, Bandwidth, Latency)
-    // nWorkers 수만큼 생성하도록 반복문으로 처리하거나, 필요한 만큼 push_back
-    for(int i=0; i<nWorkers; ++i) {
-        if (i == 0) profiles.push_back(DeviceProfile(100.0f, 100.0f, latency));
-        else if (i == 1) profiles.push_back(DeviceProfile(100.0f, 100.0f, latency));
-        else if (i == 2) profiles.push_back(DeviceProfile(100.0f, 100.0f, latency));
-        else if (i == 3) profiles.push_back(DeviceProfile(100.0f, 10.0f, latency));
-        else if (i == 4) profiles.push_back(DeviceProfile(400.0f, 10.0f, latency));
-        else profiles.push_back(DeviceProfile(400.0f, 10000.0f, latency)); // Fallback
+    size_t pos1 = profileStr.find(',');
+    if (pos1 != std::string::npos) {
+        tflops = std::stof(profileStr.substr(0, pos1));
+        size_t pos2 = profileStr.find(',', pos1 + 1);
+        if (pos2 != std::string::npos) {
+            bandwidth = std::stof(profileStr.substr(pos1 + 1, pos2 - pos1 - 1));
+            latency = std::stof(profileStr.substr(pos2 + 1));
+        }
+    }
+
+    return DeviceProfile(tflops, bandwidth, latency);
+}
+
+// Create device profiles from command line arguments or use defaults
+std::vector<DeviceProfile> getDeviceProfiles(
+    int nWorkers,
+    const std::vector<std::string>& profileStrs
+) {
+    std::vector<DeviceProfile> profiles;
+
+    // If device profiles are provided, parse them
+    if (!profileStrs.empty()) {
+        if ((int)profileStrs.size() != nWorkers) {
+            throw std::runtime_error(
+                "Number of device profiles (" + std::to_string(profileStrs.size()) +
+                ") does not match number of workers (" + std::to_string(nWorkers) + ")"
+            );
+        }
+
+        LOG("📊 Using provided device profiles:");
+        for (int i = 0; i < nWorkers; i++) {
+            DeviceProfile profile = parseDeviceProfile(profileStrs[i]);
+            profiles.push_back(profile);
+            LOG("  Worker " << i << ": "
+                << profile.getTflops() << " TFLOPS, "
+                << profile.getBandwidth() << " GB/s, "
+                << profile.getLatency() << "s latency");
+        }
+    } else {
+        // Use default homogeneous profile
+        LOG("📊 Using default homogeneous device profiles:");
+        float defaultTflops = 100.0f;
+        float defaultBandwidth = 50.0f;
+        float defaultLatency = 1e-4f;
+
+        for (int i = 0; i < nWorkers; i++) {
+            profiles.push_back(DeviceProfile(defaultTflops, defaultBandwidth, defaultLatency));
+        }
+        LOG("  All workers: " << defaultTflops << " TFLOPS, "
+            << defaultBandwidth << " GB/s, " << defaultLatency << "s latency");
     }
 
     return profiles;
@@ -152,9 +200,9 @@ void runRoot(const RootArgs& args) {
         // [Stage 1] Workload Partitioning: Optimal (Algorithm 1)
         // ----------------------------------------------------------------
         int nWorkers = args.workerAddrs.size();
-        
-        // 1. 디바이스 프로필 생성 (Latency 포함됨)
-        auto profiles = getMockDeviceProfiles(nWorkers);
+
+        // 1. 디바이스 프로필 생성 (command line 인자 또는 기본값 사용)
+        auto profiles = getDeviceProfiles(nWorkers, args.deviceProfiles);
 
         // 2. 최적 할당 정책 적용
         LOG("🧠 Calculating Optimal Workload Partitioning (Algorithm 1)...");
