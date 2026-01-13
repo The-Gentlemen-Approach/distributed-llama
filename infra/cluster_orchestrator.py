@@ -11,18 +11,26 @@ class DistributedLlamaOrchestrator:
         self.worker_pods: List[RunPodPod] = []
         self.ssh_key = ssh_key
         self.executors: List[SSHExecutor] = []
+        self.worker_configs = []  # 재사용 여부 추적용
 
     def setup_cluster(self, config: dict):
         print("🌐 Provisioning worker nodes on RunPod...")
-        
+
         for i, w_cfg in enumerate(config['workers']):
-            print(f"👷 Creating worker node {i+1}: {w_cfg['name']} ({w_cfg['gpu_type_id']})")
-            pod = RunPodPod.create(
-                w_cfg['name'], 
-                w_cfg['template_id'], 
-                w_cfg['gpu_type_id']
-            )
+            # 기존 pod_id가 있으면 재사용
+            if 'pod_id' in w_cfg and w_cfg['pod_id']:
+                print(f"♻️  Reusing existing worker node {i+1}: {w_cfg['pod_id']}")
+                pod = RunPodPod(w_cfg['pod_id'])
+            else:
+                print(f"👷 Creating worker node {i+1}: {w_cfg['name']} ({w_cfg['gpu_type_id']})")
+                pod = RunPodPod.create(
+                    w_cfg['name'],
+                    w_cfg['template_id'],
+                    w_cfg['gpu_type_id']
+                )
+                print(f"   ✅ Created: {pod.pod_id}")
             self.worker_pods.append(pod)
+            self.worker_configs.append(w_cfg)
         
         # Wait for all workers to be ready
         for pod in self.worker_pods:
@@ -244,6 +252,12 @@ exit $EXIT_CODE
 
     def cleanup(self):
         print("🧹 Cleaning up cluster...")
-        for pod in self.worker_pods:
-            pod.terminate()
-            print(f"   Terminated {pod.pod_id}")
+        for i, pod in enumerate(self.worker_pods):
+            w_cfg = self.worker_configs[i] if i < len(self.worker_configs) else {}
+            # pod_id가 있으면 재사용 중이므로 stop만
+            if 'pod_id' in w_cfg and w_cfg['pod_id']:
+                pod.stop()
+                print(f"   ⏸️  Stopped (reused pod): {pod.pod_id}")
+            else:
+                pod.terminate()
+                print(f"   ❌ Terminated: {pod.pod_id}")
