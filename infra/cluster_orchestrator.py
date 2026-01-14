@@ -218,6 +218,17 @@ exit $EXIT_CODE
         print(f"👑 Running root node locally via {script_path}...")
         workers_arg = " ".join(worker_endpoints)
         
+        # Collect device profiles from config
+        device_profiles = []
+        for w_cfg in worker_configs:
+            profile = w_cfg.get('device_profile', {})
+            tflops = profile.get('tflops', 100.0)
+            bandwidth = profile.get('bandwidth', 50.0)
+            latency = profile.get('latency', 0.0001)
+            device_profiles.append(f"{tflops},{bandwidth},{latency}")
+
+        device_profiles_arg = " ".join(device_profiles)
+
         script_cmd = [
             script_path,
             "--model", model,
@@ -225,7 +236,8 @@ exit $EXIT_CODE
             "--workers", workers_arg,
             "--nthreads", str(threads),
             "--steps", str(steps),
-            "--prompt", prompt
+            "--prompt", prompt,
+            "--device-profiles", device_profiles_arg
         ]
         
         try:
